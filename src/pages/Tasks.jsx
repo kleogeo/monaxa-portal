@@ -1,7 +1,15 @@
 import { useEffect, useState, useRef } from 'react'
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors
+} from '@dnd-kit/core'
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates,
+  useSortable, verticalListSortingStrategy
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Plus, X, ChevronDown } from 'lucide-react'
+import { Plus, X, ChevronDown, GripVertical } from 'lucide-react'
 import { format } from 'date-fns'
 
 const STATUS_COLORS = {
@@ -17,6 +25,52 @@ const PRIORITY_DOT = {
   medium: 'bg-blue-400',
   high: 'bg-orange-400',
   urgent: 'bg-red-400',
+}
+
+
+function SortableTaskCard({ task, updateStatus }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  return (
+    <div ref={setNodeRef} style={style} className="bg-brand-surface border border-brand-border rounded-xl p-4 flex items-start gap-4 hover:border-brand-gold/30 transition-colors">
+      <span {...attributes} {...listeners} onClick={e => e.stopPropagation()}
+        className="text-brand-border hover:text-brand-muted cursor-grab active:cursor-grabbing mt-1 flex-shrink-0 touch-none">
+        <GripVertical size={14} />
+      </span>
+      <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start gap-3">
+          <div className="flex-1">
+            <p className="text-white text-sm font-medium">{task.title}</p>
+            {task.description && <p className="text-brand-muted text-xs mt-0.5 line-clamp-1">{task.description}</p>}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {task.assigned && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-black" style={{ backgroundColor: task.assigned.avatar_color || '#C9A84C' }}>
+                  {task.assigned.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                </div>
+                <span className="text-brand-muted text-xs hidden sm:block">{task.assigned.full_name.split(' ')[0]}</span>
+              </div>
+            )}
+            <select value={task.status} onChange={e => updateStatus(task.id, e.target.value)}
+              className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-gold">
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="review">Review</option>
+              <option value="done">Done</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 mt-2">
+          <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[task.status]}`}>{task.status.replace('_', ' ')}</span>
+          <span className="text-brand-muted text-xs capitalize">{task.type}</span>
+          {task.due_date && <span className="text-brand-muted text-xs">{format(new Date(task.due_date), 'MMM d')}</span>}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function Tasks() {
@@ -51,7 +105,7 @@ export default function Tasks() {
 
   async function fetchData() {
     const [tasksRes, profilesRes, deptsRes] = await Promise.all([
-      supabase.from('tasks').select(`*, assigned:profiles!assigned_to(full_name, avatar_color), creator:profiles!created_by(full_name)`).order('created_at', { ascending: false }),
+      supabase.from('tasks').select(`*, assigned:profiles!assigned_to(full_name, avatar_color), creator:profiles!created_by(full_name)`).order('sort_order', { ascending: true }).order('created_at', { ascending: false }),
       supabase.from('profiles').select('id, full_name, avatar_color').eq('is_active', true),
       supabase.from('departments').select('id, name, color').eq('is_active', true).order('name'),
     ])
@@ -59,6 +113,29 @@ export default function Tasks() {
     setProfiles(profilesRes.data || [])
     setDepartments(deptsRes.data || [])
     setLoading(false)
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  async function handleDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = filtered.findIndex(t => t.id === active.id)
+    const newIndex = filtered.findIndex(t => t.id === over.id)
+    const reordered = arrayMove(filtered, oldIndex, newIndex)
+    setTasks(prev => {
+      const ids = new Set(reordered.map(t => t.id))
+      const others = prev.filter(t => !ids.has(t.id))
+      return [...reordered, ...others]
+    })
+    await Promise.all(
+      reordered.map((task, i) =>
+        supabase.from('tasks').update({ sort_order: i }).eq('id', task.id)
+      )
+    )
   }
 
   async function createTask(e) {
@@ -116,45 +193,11 @@ export default function Tasks() {
 
       {/* Task list */}
       <div className="space-y-2">
-        {filtered.map(task => (
-          <div key={task.id} className="bg-brand-surface border border-brand-border rounded-xl p-4 flex items-start gap-4 hover:border-brand-gold/30 transition-colors">
-            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <p className="text-white text-sm font-medium">{task.title}</p>
-                  {task.description && <p className="text-brand-muted text-xs mt-0.5 line-clamp-1">{task.description}</p>}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {task.assigned && (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-black" style={{ backgroundColor: task.assigned.avatar_color || '#C9A84C' }}>
-                        {task.assigned.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                      </div>
-                      <span className="text-brand-muted text-xs hidden sm:block">{task.assigned.full_name.split(' ')[0]}</span>
-                    </div>
-                  )}
-                  <select
-                    value={task.status}
-                    onChange={e => updateStatus(task.id, e.target.value)}
-                    className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-gold"
-                  >
-                    <option value="open">Open</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="review">Review</option>
-                    <option value="done">Done</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 mt-2">
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[task.status]}`}>{task.status.replace('_', ' ')}</span>
-                <span className="text-brand-muted text-xs capitalize">{task.type}</span>
-                {task.due_date && <span className="text-brand-muted text-xs">{format(new Date(task.due_date), 'MMM d')}</span>}
-              </div>
-            </div>
-          </div>
-        ))}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={filtered.map(t => t.id)} strategy={verticalListSortingStrategy}>
+            {filtered.map(task => <SortableTaskCard key={task.id} task={task} updateStatus={updateStatus} />)}
+          </SortableContext>
+        </DndContext>
         {filtered.length === 0 && <p className="text-brand-muted text-sm text-center py-12">No tasks found</p>}
       </div>
 

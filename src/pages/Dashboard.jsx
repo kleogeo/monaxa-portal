@@ -1,11 +1,20 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor,
+  useSensor, useSensors, DragOverlay
+} from '@dnd-kit/core'
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates,
+  useSortable, verticalListSortingStrategy
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import {
   Clock, CheckCircle2, AlertCircle, ChevronUp, ChevronDown,
   X, User, FileText, Send, Repeat, Zap, Search, Pin,
   HelpCircle, UserPlus, ArrowRightLeft, StickyNote, Timer,
-  Activity, Paperclip, MessageCircle, Plus
+  Activity, Paperclip, MessageCircle, Plus, GripVertical
 } from 'lucide-react'
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns'
 import FileDrop from '../components/FileDrop'
@@ -108,6 +117,8 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
   const [tab, setTab] = useState('details') // details | help | handoff | notes
   const [saving, setSaving] = useState(false)
   const [loadingNote, setLoadingNote] = useState(true)
+  const [dragOver, setDragOver] = useState(false)
+  const [dropFile, setDropFile] = useState(null)
 
   const assignee = profiles.find(p => p.id === (assignedTo || task.assigned_to))
   const creator = profiles.find(p => p.id === task.created_by)
@@ -250,7 +261,25 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-brand-surface border border-brand-border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div
+        className={`bg-brand-surface border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl transition-colors ${dragOver ? 'border-brand-gold border-2 bg-brand-gold/5' : 'border-brand-border'}`}
+        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }}
+        onDrop={e => {
+          e.preventDefault()
+          setDragOver(false)
+          const file = e.dataTransfer.files?.[0]
+          if (file) { setDropFile(file); setTab('files') }
+        }}
+      >
+      {dragOver && (
+        <div className="absolute inset-0 rounded-2xl flex items-center justify-center pointer-events-none z-10">
+          <div className="bg-brand-dark/90 border-2 border-brand-gold border-dashed rounded-xl px-8 py-6 text-center">
+            <Paperclip size={24} className="text-brand-gold mx-auto mb-2" />
+            <p className="text-brand-gold font-semibold text-sm">Drop to attach file</p>
+          </div>
+        </div>
+      )}
 
         {/* Header */}
         <div className="flex items-start justify-between p-5 border-b border-brand-border">
@@ -531,7 +560,7 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
 }
 
 // ─── Task Row ─────────────────────────────────────────────────────
-function TaskRow({ task, profiles, index, onClick, isPinned }) {
+function TaskRow({ task, profiles, index, onClick, isPinned, dragHandle }) {
   const assignee = profiles.find(p => p.id === task.assigned_to)
   const pc = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium
   const TypeIcon = TYPE_CONFIG[task.type]?.icon || Zap
@@ -542,6 +571,7 @@ function TaskRow({ task, profiles, index, onClick, isPinned }) {
         isPinned ? 'bg-brand-gold/5' : ''
       }`}>
       <div className="flex items-center gap-2 flex-shrink-0">
+        {dragHandle}
         {isPinned ? <Pin size={11} className="text-brand-gold" /> : <span className="text-brand-muted text-xs w-4 text-center font-mono">{index + 1}</span>}
         <div className={`w-2 h-2 rounded-full ${pc.dot}`} />
       </div>
@@ -568,6 +598,32 @@ function TaskRow({ task, profiles, index, onClick, isPinned }) {
       <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 ${STATUS_CONFIG[task.status]?.bg} ${STATUS_CONFIG[task.status]?.color}`}>
         {STATUS_CONFIG[task.status]?.label}
       </span>
+    </div>
+  )
+}
+
+// Sortable wrapper for TaskRow
+function SortableTaskRow({ task, profiles, index, onClick, isPinned }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+  }
+  const dragHandle = (
+    <span
+      {...attributes} {...listeners}
+      onClick={e => e.stopPropagation()}
+      className="text-brand-border hover:text-brand-muted cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+      title="Drag to reorder"
+    >
+      <GripVertical size={14} />
+    </span>
+  )
+  return (
+    <div ref={setNodeRef} style={style}>
+      <TaskRow task={task} profiles={profiles} index={index} onClick={onClick} isPinned={isPinned} dragHandle={dragHandle} />
     </div>
   )
 }
@@ -648,7 +704,7 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     const [activeRes, doneRes, profilesRes, deptsRes] = await Promise.all([
-      supabase.from('tasks').select('*').not('status', 'in', '("done","cancelled")').order('created_at', { ascending: false }),
+      supabase.from('tasks').select('*').not('status', 'in', '("done","cancelled")').order('sort_order', { ascending: true }).order('created_at', { ascending: false }),
       supabase.from('tasks').select('*').eq('status', 'done').order('completed_at', { ascending: false }).limit(20),
       supabase.from('profiles').select('*').eq('is_active', true),
       supabase.from('departments').select('*').eq('is_active', true).order('name'),
@@ -678,6 +734,32 @@ export default function Dashboard() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  async function handleDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = filteredTasks.findIndex(t => t.id === active.id)
+    const newIndex = filteredTasks.findIndex(t => t.id === over.id)
+    const reordered = arrayMove(filteredTasks, oldIndex, newIndex)
+    // Optimistic update
+    setTasks(prev => {
+      const ids = new Set(reordered.map(t => t.id))
+      const others = prev.filter(t => !ids.has(t.id))
+      return [...reordered, ...others]
+    })
+    // Persist to Supabase
+    await Promise.all(
+      reordered.map((task, i) =>
+        supabase.from('tasks').update({ sort_order: i }).eq('id', task.id)
+      )
+    )
+  }
 
   async function createTask(e) {
     e.preventDefault()
@@ -817,9 +899,15 @@ export default function Dashboard() {
 
         {filteredTasks.length === 0
           ? <div className="text-center py-10 text-brand-muted text-sm">{search ? `No results for "${search}"` : 'No active tasks'}</div>
-          : filteredTasks.map((task, i) => (
-              <TaskRow key={task.id} task={task} profiles={profiles} index={i} onClick={setSelectedTask} isPinned={task.is_pinned} />
-            ))
+          : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={filteredTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                {filteredTasks.map((task, i) => (
+                  <SortableTaskRow key={task.id} task={task} profiles={profiles} index={i} onClick={setSelectedTask} isPinned={task.is_pinned} />
+                ))}
+              </SortableContext>
+            </DndContext>
+          )
         }
       </div>
 

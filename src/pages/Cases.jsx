@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, GripVertical } from 'lucide-react'
 import { format } from 'date-fns'
 import FileDrop from '../components/FileDrop'
 
@@ -23,6 +26,48 @@ const CASE_TYPE_LABELS = {
   other: 'Other',
 }
 
+
+function SortableCaseRow({ c, updateStatus }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: c.id })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  return (
+    <tr ref={setNodeRef} style={style} className="border-b border-brand-border last:border-0 hover:bg-white/5 transition-colors">
+      <td className="px-3 py-3">
+        <span {...attributes} {...listeners}
+          className="text-brand-border hover:text-brand-muted cursor-grab active:cursor-grabbing touch-none flex justify-center">
+          <GripVertical size={14} />
+        </span>
+      </td>
+      <td className="px-4 py-3 text-brand-gold text-sm font-medium">{c.case_ref}</td>
+      <td className="px-4 py-3 text-white text-sm">{c.account_id || '—'}</td>
+      <td className="px-4 py-3 text-brand-muted text-xs">{CASE_TYPE_LABELS[c.case_type]}</td>
+      <td className="px-4 py-3">
+        {c.assigned ? (
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-black" style={{ backgroundColor: c.assigned.avatar_color || '#C9A84C' }}>
+              {c.assigned.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+            </div>
+            <span className="text-white text-xs">{c.assigned.full_name.split(' ')[0]}</span>
+          </div>
+        ) : '—'}
+      </td>
+      <td className="px-4 py-3">
+        <span className={`text-xs capitalize font-medium ${c.priority === 'urgent' ? 'text-red-400' : c.priority === 'high' ? 'text-orange-400' : c.priority === 'medium' ? 'text-blue-400' : 'text-brand-muted'}`}>{c.priority}</span>
+      </td>
+      <td className="px-4 py-3">
+        <select value={c.status} onChange={e => updateStatus(c.id, e.target.value)}
+          className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-gold">
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+          <option value="escalated">Escalated</option>
+          <option value="closed">Closed</option>
+        </select>
+      </td>
+      <td className="px-4 py-3 text-brand-muted text-xs">{format(new Date(c.created_at), 'MMM d')}</td>
+    </tr>
+  )
+}
+
 export default function Cases() {
   const { profile } = useAuth()
   const [cases, setCases] = useState([])
@@ -39,12 +84,35 @@ export default function Cases() {
 
   async function fetchData() {
     const [casesRes, profilesRes] = await Promise.all([
-      supabase.from('cases').select(`*, assigned:profiles!assigned_to(full_name, avatar_color)`).order('created_at', { ascending: false }),
+      supabase.from('cases').select(`*, assigned:profiles!assigned_to(full_name, avatar_color)`).order('sort_order', { ascending: true }).order('created_at', { ascending: false }),
       supabase.from('profiles').select('id, full_name, avatar_color').eq('is_active', true),
     ])
     setCases(casesRes.data || [])
     setProfiles(profilesRes.data || [])
     setLoading(false)
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  async function handleDragEnd(event) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = filtered.findIndex(c => c.id === active.id)
+    const newIndex = filtered.findIndex(c => c.id === over.id)
+    const reordered = arrayMove(filtered, oldIndex, newIndex)
+    setCases(prev => {
+      const ids = new Set(reordered.map(c => c.id))
+      const others = prev.filter(c => !ids.has(c.id))
+      return [...reordered, ...others]
+    })
+    await Promise.all(
+      reordered.map((c, i) =>
+        supabase.from('cases').update({ sort_order: i }).eq('id', c.id)
+      )
+    )
   }
 
   async function generateRef() {
@@ -109,6 +177,7 @@ export default function Cases() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-brand-border">
+              <th className="text-left text-brand-muted text-xs font-medium px-4 py-3 w-8"></th>
               <th className="text-left text-brand-muted text-xs font-medium px-4 py-3">Case Ref</th>
               <th className="text-left text-brand-muted text-xs font-medium px-4 py-3">Account</th>
               <th className="text-left text-brand-muted text-xs font-medium px-4 py-3">Type</th>
@@ -119,37 +188,13 @@ export default function Cases() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(c => (
-              <tr key={c.id} className="border-b border-brand-border last:border-0 hover:bg-white/5 transition-colors">
-                <td className="px-4 py-3 text-brand-gold text-sm font-medium">{c.case_ref}</td>
-                <td className="px-4 py-3 text-white text-sm">{c.account_id || '—'}</td>
-                <td className="px-4 py-3 text-brand-muted text-xs">{CASE_TYPE_LABELS[c.case_type]}</td>
-                <td className="px-4 py-3">
-                  {c.assigned ? (
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-black" style={{ backgroundColor: c.assigned.avatar_color || '#C9A84C' }}>
-                        {c.assigned.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                      </div>
-                      <span className="text-white text-xs">{c.assigned.full_name.split(' ')[0]}</span>
-                    </div>
-                  ) : '—'}
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs capitalize font-medium ${c.priority === 'urgent' ? 'text-red-400' : c.priority === 'high' ? 'text-orange-400' : c.priority === 'medium' ? 'text-blue-400' : 'text-brand-muted'}`}>{c.priority}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <select value={c.status} onChange={e => updateStatus(c.id, e.target.value)} className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-gold">
-                    <option value="open">Open</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="escalated">Escalated</option>
-                    <option value="closed">Closed</option>
-                  </select>
-                </td>
-                <td className="px-4 py-3 text-brand-muted text-xs">{format(new Date(c.created_at), 'MMM d')}</td>
-              </tr>
-            ))}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={filtered.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                {filtered.map(c => <SortableCaseRow key={c.id} c={c} updateStatus={updateStatus} />)}
+              </SortableContext>
+            </DndContext>
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="text-center text-brand-muted text-sm py-12">No cases found</td></tr>
+              <tr><td colSpan={8} className="text-center text-brand-muted text-sm py-12">No cases found</td></tr>
             )}
           </tbody>
         </table>

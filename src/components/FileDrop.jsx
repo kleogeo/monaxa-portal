@@ -125,7 +125,7 @@ function ConfirmDropModal({ file, onConfirm, onCancel }) {
 }
 
 // ── Main FileDrop component ───────────────────────────────────────
-export default function FileDrop({ entityType, entityId, onUploadComplete }) {
+export default function FileDrop({ entityType, entityId, taskId, preloadFile, onPreloadConsumed, onUploadComplete }) {
   const { profile } = useAuth()
   const [dragging, setDragging] = useState(false)
   const [pendingFile, setPendingFile] = useState(null)
@@ -137,18 +137,32 @@ export default function FileDrop({ entityType, entityId, onUploadComplete }) {
 
   // Load existing attachments
   const loadAttachments = useCallback(async () => {
-    if (!entityId) return
+    const eid = entityId || taskId
+    const etype = entityType || 'task'
+    if (!eid) return
     const { data } = await supabase
       .from('file_attachments')
       .select('*, uploader:profiles!uploaded_by(full_name)')
-      .eq('entity_type', entityType)
-      .eq('entity_id', entityId)
+      .eq('entity_type', etype)
+      .eq('entity_id', eid)
       .order('created_at', { ascending: false })
     setAttachments(data || [])
     setLoadingFiles(false)
   }, [entityType, entityId])
 
   useEffect(() => { loadAttachments() }, [loadAttachments])
+
+  // Handle file dropped directly onto the modal from outside FileDrop
+  useEffect(() => {
+    if (preloadFile) {
+      setPendingFile(preloadFile)
+      onPreloadConsumed?.()
+    }
+  }, [preloadFile])
+
+  // Support taskId as alias for entityId
+  const resolvedEntityId = entityId || taskId
+  const resolvedEntityType = entityType || 'task'
 
   function handleDragOver(e) {
     e.preventDefault()
