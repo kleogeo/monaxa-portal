@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, Users, CheckSquare, FolderOpen,
   Calendar, Settings, LogOut, Calculator, FileText,
-  Table2, ChevronDown, ChevronRight, Wrench
+  Table2, ChevronDown, ChevronRight, Wrench, BookOpen
 } from 'lucide-react'
 
 const navItems = [
@@ -13,6 +13,7 @@ const navItems = [
   { to: '/tasks', icon: CheckSquare, label: 'Tasks' },
   { to: '/cases', icon: FolderOpen, label: 'Cases' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/howto', icon: BookOpen, label: 'How-To Guide' },
 ]
 
 const toolItems = [

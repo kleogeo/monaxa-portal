@@ -11,6 +11,7 @@ import Admin from './pages/Admin'
 import Calculator from './pages/Calculator'
 import Templates from './pages/Templates'
 import Sheets from './pages/Sheets'
+import HowTo from './pages/HowTo'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -37,6 +38,7 @@ function AppRoutes() {
       <Route path="/calculator" element={<ProtectedRoute><Layout><Calculator /></Layout></ProtectedRoute>} />
       <Route path="/templates" element={<ProtectedRoute><Layout><Templates /></Layout></ProtectedRoute>} />
       <Route path="/sheets" element={<ProtectedRoute><Layout><Sheets /></Layout></ProtectedRoute>} />
+      <Route path="/howto" element={<ProtectedRoute><Layout><HowTo /></Layout></ProtectedRoute>} />
     </Routes>
   )
 }
