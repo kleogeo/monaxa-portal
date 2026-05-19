@@ -23,24 +23,27 @@ export default function Tasks() {
   const { profile } = useAuth()
   const [tasks, setTasks] = useState([])
   const [profiles, setProfiles] = useState([])
+  const [departments, setDepartments] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [filter, setFilter] = useState('all')
   const [form, setForm] = useState({
     title: '', description: '', type: 'task',
     status: 'open', priority: 'medium',
-    assigned_to: '', due_date: ''
+    assigned_to: '', due_date: '', estimated_hours: '', department_id: ''
   })
 
   useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
-    const [tasksRes, profilesRes] = await Promise.all([
+    const [tasksRes, profilesRes, deptsRes] = await Promise.all([
       supabase.from('tasks').select(`*, assigned:profiles!assigned_to(full_name, avatar_color), creator:profiles!created_by(full_name)`).order('created_at', { ascending: false }),
       supabase.from('profiles').select('id, full_name, avatar_color').eq('is_active', true),
+      supabase.from('departments').select('id, name, color').eq('is_active', true).order('name'),
     ])
     setTasks(tasksRes.data || [])
     setProfiles(profilesRes.data || [])
+    setDepartments(deptsRes.data || [])
     setLoading(false)
   }
 
@@ -51,10 +54,12 @@ export default function Tasks() {
       created_by: profile.id,
       assigned_to: form.assigned_to || profile.id,
       due_date: form.due_date || null,
+      estimated_hours: form.estimated_hours || null,
+      department_id: form.department_id || null,
     }
     await supabase.from('tasks').insert(payload)
     setShowModal(false)
-    setForm({ title: '', description: '', type: 'task', status: 'open', priority: 'medium', assigned_to: '', due_date: '' })
+    setForm({ title: '', description: '', type: 'task', status: 'open', priority: 'medium', assigned_to: '', due_date: '', estimated_hours: '', department_id: '' })
     fetchData()
   }
 
@@ -177,10 +182,25 @@ export default function Tasks() {
                   {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-brand-muted text-xs mb-1 block">Due Date</label>
-                <input type="date" value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Due Date</label>
+                  <input type="date" value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                </div>
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Est. Hours</label>
+                  <input type="number" min="0.5" step="0.5" value={form.estimated_hours} onChange={e => setForm({...form, estimated_hours: e.target.value})} placeholder="e.g. 2" className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                </div>
               </div>
+              {departments.length > 1 && (
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Department</label>
+                  <select value={form.department_id} onChange={e => setForm({...form, department_id: e.target.value})} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="">Select department...</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowModal(false)} className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Cancel</button>
                 <button type="submit" className="flex-1 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold rounded-lg py-2.5 text-sm transition-colors">Create Task</button>

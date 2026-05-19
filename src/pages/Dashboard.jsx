@@ -5,7 +5,7 @@ import {
   Clock, CheckCircle2, AlertCircle, ChevronUp, ChevronDown,
   X, User, FileText, Send, Repeat, Zap, Search, Pin,
   HelpCircle, UserPlus, ArrowRightLeft, StickyNote, Timer,
-  Activity, Paperclip
+  Activity, Paperclip, MessageCircle
 } from 'lucide-react'
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns'
 import FileDrop from '../components/FileDrop'
@@ -103,6 +103,8 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
   const [helpMsg, setHelpMsg] = useState(task.help_message || '')
   const [collaborators, setCollaborators] = useState([])
   const [newCollab, setNewCollab] = useState('')
+  const [comments, setComments] = useState([])
+  const [newComment, setNewComment] = useState('')
   const [tab, setTab] = useState('details') // details | help | handoff | notes
   const [saving, setSaving] = useState(false)
   const [loadingNote, setLoadingNote] = useState(true)
@@ -127,7 +129,30 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
       .select('user_id')
       .eq('task_id', task.id)
       .then(({ data }) => setCollaborators(data?.map(d => d.user_id) || []))
+
+    // Load comments
+    loadComments()
   }, [task.id, currentProfile.id])
+
+  async function loadComments() {
+    const { data } = await supabase
+      .from('task_comments')
+      .select('*, author:profiles!user_id(full_name, avatar_color)')
+      .eq('task_id', task.id)
+      .order('created_at', { ascending: true })
+    setComments(data || [])
+  }
+
+  async function postComment() {
+    if (!newComment.trim()) return
+    await supabase.from('task_comments').insert({
+      task_id: task.id,
+      user_id: currentProfile.id,
+      message: newComment.trim()
+    })
+    setNewComment('')
+    loadComments()
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -216,6 +241,7 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
   const tabs = [
     { key: 'details', label: 'Details', icon: FileText },
     { key: 'files', label: 'Files', icon: Paperclip },
+    { key: 'comments', label: comments.length > 0 ? `Chat (${comments.length})` : 'Chat', icon: MessageCircle },
     { key: 'help', label: task.help_requested ? '🆘 Help' : 'Help', icon: HelpCircle },
     { key: 'handoff', label: 'Handoff', icon: ArrowRightLeft },
     { key: 'notes', label: 'My Notes', icon: StickyNote },
@@ -385,6 +411,52 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
               </button>
             </div>
           </>)}
+
+          {/* ── COMMENTS TAB ── */}
+          {tab === 'comments' && (
+            <div className="space-y-3">
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {comments.length === 0 && (
+                  <p className="text-brand-muted text-sm text-center py-6">No comments yet — start the conversation here instead of WhatsApp</p>
+                )}
+                {comments.map(c => {
+                  const isMe = c.user_id === currentProfile?.id
+                  return (
+                    <div key={c.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''}`}>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-black flex-shrink-0"
+                        style={{ backgroundColor: c.author?.avatar_color || '#C9A84C' }}>
+                        {c.author?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+                      </div>
+                      <div className={`max-w-[75%] ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
+                        <div className={`px-3 py-2 rounded-xl text-sm leading-relaxed ${
+                          isMe ? 'bg-brand-gold/20 text-white rounded-tr-sm' : 'bg-brand-dark border border-brand-border text-white rounded-tl-sm'
+                        }`}>
+                          {c.message}
+                        </div>
+                        <span className="text-brand-muted text-xs px-1">
+                          {!isMe && <span className="font-medium text-white mr-1">{c.author?.full_name?.split(' ')[0]}</span>}
+                          {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex gap-2 pt-1 border-t border-brand-border">
+                <input
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), postComment())}
+                  placeholder="Add a comment... (Enter to send)"
+                  className="flex-1 bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold"
+                />
+                <button onClick={postComment} disabled={!newComment.trim()}
+                  className="px-3 py-2.5 bg-brand-gold hover:bg-brand-gold/90 text-black rounded-lg transition-colors disabled:opacity-40">
+                  <Send size={15} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ── FILES TAB ── */}
           {tab === 'files' && (

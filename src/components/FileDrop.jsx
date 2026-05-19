@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { Upload, X, FileText, File, Image, Archive, Trash2, Download, AlertCircle, Check } from 'lucide-react'
@@ -148,7 +148,7 @@ export default function FileDrop({ entityType, entityId, onUploadComplete }) {
     setLoadingFiles(false)
   }, [entityType, entityId])
 
-  useState(() => { loadAttachments() }, [])
+  useEffect(() => { loadAttachments() }, [loadAttachments])
 
   function handleDragOver(e) {
     e.preventDefault()
