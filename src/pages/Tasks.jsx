@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Plus, X, ChevronDown } from 'lucide-react'
@@ -34,6 +34,20 @@ export default function Tasks() {
   })
 
   useEffect(() => { fetchData() }, [])
+
+  // Keyboard shortcuts: N=new task, Escape=close, S=save
+  const formRef = useRef(null)
+  useEffect(() => {
+    const handler = (e) => {
+      const tag = document.activeElement.tagName
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+      if (e.key === 'n' && !inInput) { e.preventDefault(); setShowModal(true) }
+      if (e.key === 'Escape') setShowModal(false)
+      if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); formRef.current?.requestSubmit() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   async function fetchData() {
     const [tasksRes, profilesRes, deptsRes] = await Promise.all([
@@ -86,9 +100,16 @@ export default function Tasks() {
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
-        {['all', 'mine', 'open', 'in_progress', 'review', 'done'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === f ? 'bg-brand-gold text-black' : 'bg-brand-surface border border-brand-border text-brand-muted hover:text-white'}`}>
-            {f.replace('_', ' ')}
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'mine', label: 'Mine' },
+          { key: 'open', label: 'Open' },
+          { key: 'in_progress', label: 'In Progress' },
+          { key: 'review', label: 'Review' },
+          { key: 'done', label: 'Done' },
+        ].map(({ key, label }) => (
+          <button key={key} onClick={() => setFilter(key)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === key ? 'bg-brand-gold text-black' : 'bg-brand-surface border border-brand-border text-brand-muted hover:text-white'}`}>
+            {label}
           </button>
         ))}
       </div>
@@ -145,7 +166,7 @@ export default function Tasks() {
               <h3 className="font-semibold text-white">New Task</h3>
               <button onClick={() => setShowModal(false)} className="text-brand-muted hover:text-white"><X size={18} /></button>
             </div>
-            <form onSubmit={createTask} className="space-y-4">
+            <form ref={formRef} onSubmit={createTask} className="space-y-4">
               <div>
                 <label className="text-brand-muted text-xs mb-1 block">Title *</label>
                 <input value={form.title} onChange={e => setForm({...form, title: e.target.value})} required className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" placeholder="Task title" />

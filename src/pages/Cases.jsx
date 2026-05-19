@@ -90,9 +90,16 @@ export default function Cases() {
 
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
-        {['all', 'mine', 'open', 'in_progress', 'escalated', 'closed'].map(f => (
-          <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === f ? 'bg-brand-gold text-black' : 'bg-brand-surface border border-brand-border text-brand-muted hover:text-white'}`}>
-            {f.replace('_', ' ')}
+        {[
+          { key: 'all', label: 'All' },
+          { key: 'mine', label: 'Mine' },
+          { key: 'open', label: 'Open' },
+          { key: 'in_progress', label: 'In Progress' },
+          { key: 'escalated', label: 'Escalated' },
+          { key: 'closed', label: 'Closed' },
+        ].map(({ key, label }) => (
+          <button key={key} onClick={() => setFilter(key)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === key ? 'bg-brand-gold text-black' : 'bg-brand-surface border border-brand-border text-brand-muted hover:text-white'}`}>
+            {label}
           </button>
         ))}
       </div>

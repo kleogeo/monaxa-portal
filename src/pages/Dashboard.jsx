@@ -5,7 +5,7 @@ import {
   Clock, CheckCircle2, AlertCircle, ChevronUp, ChevronDown,
   X, User, FileText, Send, Repeat, Zap, Search, Pin,
   HelpCircle, UserPlus, ArrowRightLeft, StickyNote, Timer,
-  Activity, Paperclip, MessageCircle
+  Activity, Paperclip, MessageCircle, Plus
 } from 'lucide-react'
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns'
 import FileDrop from '../components/FileDrop'
@@ -642,6 +642,8 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState('all')
   const [expandDone, setExpandDone] = useState(false)
   const [search, setSearch] = useState('')
+  const [showCreateTask, setShowCreateTask] = useState(false)
+  const [createForm, setCreateForm] = useState({ title: '', description: '', type: 'task', priority: 'medium', due_date: '', estimated_hours: '', assigned_to: '' })
   const searchRef = useRef(null)
 
   const fetchData = useCallback(async () => {
@@ -660,18 +662,38 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  // Keyboard shortcut: / to focus search
+  // Keyboard shortcuts: N=new task, /=search, Escape=close
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
-        e.preventDefault()
-        searchRef.current?.focus()
+      const tag = document.activeElement.tagName
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+      if (e.key === '/' && !inInput) { e.preventDefault(); searchRef.current?.focus() }
+      if (e.key === 'n' && !inInput) { e.preventDefault(); setShowCreateTask(true) }
+      if (e.key === 'Escape') {
+        setSearch('')
+        setShowCreateTask(false)
+        setSelectedTask(null)
       }
-      if (e.key === 'Escape') setSearch('')
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  async function createTask(e) {
+    e.preventDefault()
+    const payload = {
+      ...createForm,
+      created_by: profile.id,
+      assigned_to: createForm.assigned_to || profile.id,
+      due_date: createForm.due_date || null,
+      estimated_hours: createForm.estimated_hours || null,
+      status: 'open',
+    }
+    await supabase.from('tasks').insert(payload)
+    setShowCreateTask(false)
+    setCreateForm({ title: '', description: '', type: 'task', priority: 'medium', due_date: '', estimated_hours: '', assigned_to: '' })
+    fetchData()
+  }
 
   const sortTasks = (arr) => [...arr].sort((a, b) => {
     if (a.is_pinned && !b.is_pinned) return -1
@@ -722,10 +744,13 @@ export default function Dashboard() {
           </h1>
           <p className="text-brand-muted text-sm mt-0.5">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {urgentCount > 0 && <div className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5"><AlertCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{urgentCount} urgent</span></div>}
           {overdueCount > 0 && <div className="flex items-center gap-1.5 bg-orange-400/10 border border-orange-400/20 rounded-lg px-3 py-1.5"><Clock size={13} className="text-orange-400" /><span className="text-orange-400 text-xs font-medium">{overdueCount} overdue</span></div>}
           {helpCount > 0 && <div className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5"><HelpCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{helpCount} need help</span></div>}
+          <button onClick={() => setShowCreateTask(true)} title="New Task (N)" className="flex items-center gap-1.5 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold px-3 py-1.5 rounded-lg text-xs transition-colors">
+            <Plus size={13} /> New Task
+          </button>
         </div>
       </div>
 
@@ -849,10 +874,81 @@ export default function Dashboard() {
       {/* Activity Feed */}
       <ActivityFeed profiles={profiles} />
 
-      {/* Modal */}
+      {/* Task Detail Modal */}
       {selectedTask && (
         <TaskModal task={selectedTask} profiles={profiles} currentProfile={profile}
           onClose={() => setSelectedTask(null)} onUpdate={fetchData} />
+      )}
+
+      {/* Create Task Modal */}
+      {showCreateTask && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setShowCreateTask(false)}>
+          <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-semibold text-white">New Task <span className="text-brand-muted text-xs font-normal ml-1">Press S to save</span></h3>
+              <button onClick={() => setShowCreateTask(false)} className="text-brand-muted hover:text-white"><X size={18} /></button>
+            </div>
+            <form onSubmit={createTask} className="space-y-4">
+              <div>
+                <label className="text-brand-muted text-xs mb-1 block">Title *</label>
+                <input autoFocus value={createForm.title} onChange={e => setCreateForm({...createForm, title: e.target.value})} required
+                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" placeholder="Task title" />
+              </div>
+              <div>
+                <label className="text-brand-muted text-xs mb-1 block">Description</label>
+                <textarea value={createForm.description} onChange={e => setCreateForm({...createForm, description: e.target.value})} rows={3}
+                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold resize-none" placeholder="Details..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Type</label>
+                  <select value={createForm.type} onChange={e => setCreateForm({...createForm, type: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="task">One-off</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="case">Case</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Priority</label>
+                  <select value={createForm.priority} onChange={e => setCreateForm({...createForm, priority: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-brand-muted text-xs mb-1 block">Assign To</label>
+                <select value={createForm.assigned_to} onChange={e => setCreateForm({...createForm, assigned_to: e.target.value})}
+                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                  <option value="">Assign to myself</option>
+                  {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Due Date</label>
+                  <input type="date" value={createForm.due_date} onChange={e => setCreateForm({...createForm, due_date: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                </div>
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Est. Hours</label>
+                  <input type="number" min="0.5" step="0.5" value={createForm.estimated_hours} onChange={e => setCreateForm({...createForm, estimated_hours: e.target.value})}
+                    placeholder="e.g. 2" className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowCreateTask(false)} className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Cancel</button>
+                <button type="submit" className="flex-1 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold rounded-lg py-2.5 text-sm transition-colors">Create Task</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   )

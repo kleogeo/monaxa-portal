@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  BookOpen, ChevronDown, ChevronUp, LogIn, LayoutDashboard,
+  BookOpen, ChevronDown, ChevronUp, LogIn, LayoutDashboard, Printer,
   CheckSquare, FolderOpen, Users, Calculator, Shield, User,
   Zap, Repeat, AlertCircle, Clock, CheckCircle2, ArrowRight,
   Lock, Edit3, UserCheck, Eye
@@ -79,9 +79,17 @@ export default function HowTo() {
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
-      <div>
-        <h1 className="font-display text-2xl font-bold text-white">How-To Guide</h1>
-        <p className="text-brand-muted text-sm mt-1">Everything you need to know about the Monaxa Ops Portal</p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-white">How-To Guide</h1>
+          <p className="text-brand-muted text-sm mt-1">Everything you need to know about the Monaxa Ops Portal</p>
+        </div>
+        <button
+          onClick={() => window.print()}
+          className="flex items-center gap-1.5 border border-brand-border text-brand-muted hover:text-white hover:border-brand-gold px-3 py-2 rounded-lg text-sm transition-colors print:hidden"
+        >
+          <Printer size={14} /> Print / Save PDF
+        </button>
       </div>
 
       {/* Quick start banner */}

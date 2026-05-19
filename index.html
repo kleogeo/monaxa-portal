@@ -7,6 +7,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+    <style>
+      @media print {
+        body { background: white !important; color: black !important; }
+        nav, aside, [class*="sidebar"], .print\:hidden { display: none !important; }
+        [class*="bg-brand-dark"], [class*="bg-brand-surface"] { background: #f9f9f9 !important; }
+        [class*="text-white"] { color: #111 !important; }
+        [class*="text-brand-muted"] { color: #555 !important; }
+        [class*="text-brand-gold"] { color: #b8860b !important; }
+        [class*="border-brand-border"] { border-color: #ddd !important; }
+        a { color: inherit !important; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
