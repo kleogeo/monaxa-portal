@@ -12,6 +12,7 @@ import Calculator from './pages/Calculator'
 import Templates from './pages/Templates'
 import Sheets from './pages/Sheets'
 import HowTo from './pages/HowTo'
+import RotaCalendar from './pages/RotaCalendar'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -39,6 +40,7 @@ function AppRoutes() {
       <Route path="/templates" element={<ProtectedRoute><Layout><Templates /></Layout></ProtectedRoute>} />
       <Route path="/sheets" element={<ProtectedRoute><Layout><Sheets /></Layout></ProtectedRoute>} />
       <Route path="/howto" element={<ProtectedRoute><Layout><HowTo /></Layout></ProtectedRoute>} />
+      <Route path="/rota" element={<ProtectedRoute><Layout><RotaCalendar /></Layout></ProtectedRoute>} />
     </Routes>
   )
 }
