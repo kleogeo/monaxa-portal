@@ -8,6 +8,9 @@ import Tasks from './pages/Tasks'
 import Cases from './pages/Cases'
 import Calendar from './pages/Calendar'
 import Admin from './pages/Admin'
+import Calculator from './pages/Calculator'
+import Templates from './pages/Templates'
+import Sheets from './pages/Sheets'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -31,6 +34,9 @@ function AppRoutes() {
       <Route path="/cases" element={<ProtectedRoute><Layout><Cases /></Layout></ProtectedRoute>} />
       <Route path="/calendar" element={<ProtectedRoute><Layout><Calendar /></Layout></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><Layout><Admin /></Layout></ProtectedRoute>} />
+      <Route path="/calculator" element={<ProtectedRoute><Layout><Calculator /></Layout></ProtectedRoute>} />
+      <Route path="/templates" element={<ProtectedRoute><Layout><Templates /></Layout></ProtectedRoute>} />
+      <Route path="/sheets" element={<ProtectedRoute><Layout><Sheets /></Layout></ProtectedRoute>} />
     </Routes>
   )
 }

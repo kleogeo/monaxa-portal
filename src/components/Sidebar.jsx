@@ -1,8 +1,10 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard, Users, CheckSquare, FolderOpen,
-  Calendar, Settings, LogOut, Bell
+  Calendar, Settings, LogOut, Calculator, FileText,
+  Table2, ChevronDown, ChevronRight, Wrench
 } from 'lucide-react'
 
 const navItems = [
@@ -13,9 +15,19 @@ const navItems = [
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
 ]
 
+const toolItems = [
+  { to: '/calculator', icon: Calculator, label: 'Calculator' },
+  { to: '/templates', icon: FileText, label: 'Templates' },
+  { to: '/sheets', icon: Table2, label: 'Google Sheets' },
+]
+
 export default function Sidebar() {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [toolsOpen, setToolsOpen] = useState(
+    toolItems.some(t => location.pathname.startsWith(t.to))
+  )
 
   async function handleSignOut() {
     await signOut()
@@ -25,6 +37,8 @@ export default function Sidebar() {
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : '??'
+
+  const isToolActive = toolItems.some(t => location.pathname === t.to)
 
   return (
     <aside className="w-60 min-h-screen bg-brand-surface border-r border-brand-border flex flex-col fixed left-0 top-0 z-30">
@@ -38,7 +52,7 @@ export default function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
@@ -56,11 +70,47 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
+        {/* Tools section */}
+        <div className="pt-2">
+          <button
+            onClick={() => setToolsOpen(!toolsOpen)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              isToolActive
+                ? 'bg-brand-gold/10 text-brand-gold border border-brand-gold/20'
+                : 'text-brand-muted hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Wrench size={16} />
+            <span className="flex-1 text-left">Tools</span>
+            {toolsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          </button>
+          {toolsOpen && (
+            <div className="ml-3 mt-0.5 space-y-0.5 border-l border-brand-border pl-3">
+              {toolItems.map(({ to, icon: Icon, label }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                      isActive
+                        ? 'bg-brand-gold/10 text-brand-gold border border-brand-gold/20'
+                        : 'text-brand-muted hover:text-white hover:bg-white/5'
+                    }`
+                  }
+                >
+                  <Icon size={14} />
+                  {label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+
         {profile?.role === 'admin' && (
           <NavLink
             to="/admin"
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all mt-2 ${
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all mt-1 ${
                 isActive
                   ? 'bg-brand-gold/10 text-brand-gold border border-brand-gold/20'
                   : 'text-brand-muted hover:text-white hover:bg-white/5'
