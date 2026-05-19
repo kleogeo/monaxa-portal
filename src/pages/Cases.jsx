@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { Plus, X } from 'lucide-react'
 import { format } from 'date-fns'
+import FileDrop from '../components/FileDrop'
 
 const STATUS_COLORS = {
   open: 'text-blue-400 bg-blue-400/10 border-blue-400/20',

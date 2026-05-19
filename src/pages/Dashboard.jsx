@@ -5,9 +5,10 @@ import {
   Clock, CheckCircle2, AlertCircle, ChevronUp, ChevronDown,
   X, User, FileText, Send, Repeat, Zap, Search, Pin,
   HelpCircle, UserPlus, ArrowRightLeft, StickyNote, Timer,
-  Activity, RefreshCw, Calendar, Tag
+  Activity, Paperclip
 } from 'lucide-react'
 import { format, formatDistanceToNow, isPast, isToday, isTomorrow, differenceInHours } from 'date-fns'
+import FileDrop from '../components/FileDrop'
 
 // ─── Config ───────────────────────────────────────────────────────
 const PRIORITY_CONFIG = {
@@ -214,6 +215,7 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
 
   const tabs = [
     { key: 'details', label: 'Details', icon: FileText },
+    { key: 'files', label: 'Files', icon: Paperclip },
     { key: 'help', label: task.help_requested ? '🆘 Help' : 'Help', icon: HelpCircle },
     { key: 'handoff', label: 'Handoff', icon: ArrowRightLeft },
     { key: 'notes', label: 'My Notes', icon: StickyNote },
@@ -383,6 +385,11 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
               </button>
             </div>
           </>)}
+
+          {/* ── FILES TAB ── */}
+          {tab === 'files' && (
+            <FileDrop entityType="task" entityId={task.id} onUploadComplete={onUpdate} />
+          )}
 
           {/* ── HELP TAB ── */}
           {tab === 'help' && (<>
@@ -556,6 +563,8 @@ export default function Dashboard() {
   const [tasks, setTasks] = useState([])
   const [doneTasks, setDoneTasks] = useState([])
   const [profiles, setProfiles] = useState([])
+  const [departments, setDepartments] = useState([])
+  const [activeDept, setActiveDept] = useState('all')
   const [loading, setLoading] = useState(true)
   const [selectedTask, setSelectedTask] = useState(null)
   const [viewMode, setViewMode] = useState('all')
@@ -564,14 +573,16 @@ export default function Dashboard() {
   const searchRef = useRef(null)
 
   const fetchData = useCallback(async () => {
-    const [activeRes, doneRes, profilesRes] = await Promise.all([
+    const [activeRes, doneRes, profilesRes, deptsRes] = await Promise.all([
       supabase.from('tasks').select('*').not('status', 'in', '("done","cancelled")').order('created_at', { ascending: false }),
       supabase.from('tasks').select('*').eq('status', 'done').order('completed_at', { ascending: false }).limit(20),
       supabase.from('profiles').select('*').eq('is_active', true),
+      supabase.from('departments').select('*').eq('is_active', true).order('name'),
     ])
     setTasks(activeRes.data || [])
     setDoneTasks(doneRes.data || [])
     setProfiles(profilesRes.data || [])
+    setDepartments(deptsRes.data || [])
     setLoading(false)
   }, [])
 
@@ -609,10 +620,12 @@ export default function Dashboard() {
       viewMode === 'oneoff' ? (t.type === 'task' || t.type === 'case') :
       viewMode === 'help' ? t.help_requested : true
 
+    const matchesDept = activeDept === 'all' || t.department_id === activeDept
+
     const matchesSearch = !search || [t.title, t.description, t.source, t.findings]
       .filter(Boolean).some(f => f.toLowerCase().includes(search.toLowerCase()))
 
-    return matchesView && matchesSearch
+    return matchesView && matchesDept && matchesSearch
   }))
 
   const urgentCount = tasks.filter(t => t.priority === 'urgent').length
@@ -643,6 +656,23 @@ export default function Dashboard() {
           {helpCount > 0 && <div className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5"><HelpCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{helpCount} need help</span></div>}
         </div>
       </div>
+
+      {/* Department tabs */}
+      {departments.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => setActiveDept('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${activeDept === 'all' ? 'bg-brand-gold text-black border-brand-gold' : 'bg-brand-surface border-brand-border text-brand-muted hover:text-white'}`}>
+            All Departments
+          </button>
+          {departments.map(d => (
+            <button key={d.id} onClick={() => setActiveDept(d.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${activeDept === d.id ? 'text-black border-transparent' : 'bg-brand-surface border-brand-border text-brand-muted hover:text-white'}`}
+              style={activeDept === d.id ? { backgroundColor: d.color, borderColor: d.color } : {}}>
+              {d.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
