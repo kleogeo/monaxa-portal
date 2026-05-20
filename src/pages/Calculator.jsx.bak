@@ -1,0 +1,1046 @@
+import { useState, useEffect } from 'react'
+import { Info, ChevronDown, ChevronUp, TrendingDown, TrendingUp, DollarSign,
+  Percent, Calculator as CalcIcon, AlertTriangle, BarChart2, Target, Activity,
+  Star, Trophy, RefreshCw } from 'lucide-react'
+
+// ─── Favourites persistence ───────────────────────────────────────
+function useFavourites() {
+  const [favs, setFavs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('calc_favs') || '[]') } catch { return [] }
+  })
+  const toggle = (id) => setFavs(prev => {
+    const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    localStorage.setItem('calc_favs', JSON.stringify(next))
+    return next
+  })
+  return [favs, toggle]
+}
+
+// ─── Tooltip ─────────────────────────────────────────────────────
+function Tooltip({ text }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div className="relative inline-block ml-1.5">
+      <Info size={13} className="text-brand-muted cursor-help hover:text-brand-gold transition-colors"
+        onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)} />
+      {show && (
+        <div className="absolute z-50 left-5 top-0 w-64 bg-[#1a1a1a] border border-brand-border rounded-lg p-3 text-xs text-brand-muted leading-relaxed shadow-xl">
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Field ───────────────────────────────────────────────────────
+function Field({ label, value, onChange, tooltip, suffix, type = 'number', options, step, min }) {
+  return (
+    <div>
+      <label className="flex items-center text-xs text-brand-muted mb-1.5">
+        {label}{tooltip && <Tooltip text={tooltip} />}
+      </label>
+      {options ? (
+        <select value={value} onChange={e => onChange(e.target.value)}
+          className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-gold">
+          {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : (
+        <div className="relative">
+          <input type={type} value={value} onChange={e => onChange(e.target.value)}
+            step={step} min={min}
+            className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-gold pr-12" />
+          {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-muted text-xs">{suffix}</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Result ──────────────────────────────────────────────────────
+function Result({ label, value, highlight, tooltip, sub, warn }) {
+  return (
+    <div className={`rounded-lg p-3 border ${warn ? 'bg-red-400/10 border-red-400/30' : highlight ? 'bg-brand-gold/10 border-brand-gold/30' : 'bg-brand-dark border-brand-border'}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-brand-muted flex items-center">{label}{tooltip && <Tooltip text={tooltip} />}</span>
+        <span className={`text-sm font-bold font-display ${warn ? 'text-red-400' : highlight ? 'text-brand-gold' : 'text-white'}`}>{value}</span>
+      </div>
+      {sub && <p className="text-xs text-brand-muted mt-1">{sub}</p>}
+    </div>
+  )
+}
+
+// ─── CalcCard with favourite ──────────────────────────────────────
+function CalcCard({ id, title, icon: Icon, color = 'text-brand-gold', favs, onToggleFav, children }) {
+  const [open, setOpen] = useState(false)
+  const isFav = favs.includes(id)
+  return (
+    <div className={`bg-brand-surface border rounded-xl overflow-hidden transition-colors ${isFav ? 'border-brand-gold/40' : 'border-brand-border'}`}>
+      <div className="flex items-center">
+        <button onClick={() => setOpen(!open)} className="flex-1 flex items-center justify-between px-5 py-4 hover:bg-white/5 transition-colors">
+          <div className="flex items-center gap-3">
+            <Icon size={16} className={color} />
+            <span className="text-white font-medium text-sm">{title}</span>
+            {isFav && <span className="text-brand-gold text-[10px] bg-brand-gold/10 border border-brand-gold/20 px-1.5 py-0.5 rounded-full">★ Fav</span>}
+          </div>
+          {open ? <ChevronUp size={14} className="text-brand-muted" /> : <ChevronDown size={14} className="text-brand-muted" />}
+        </button>
+        <button onClick={() => onToggleFav(id)} title={isFav ? 'Remove from favourites' : 'Add to favourites'}
+          className={`px-4 py-4 transition-colors ${isFav ? 'text-brand-gold hover:text-brand-gold/70' : 'text-brand-border hover:text-brand-muted'}`}>
+          <Star size={14} fill={isFav ? 'currentColor' : 'none'} />
+        </button>
+      </div>
+      {open && <div className="px-5 pb-5 border-t border-brand-border pt-4 space-y-3">{children}</div>}
+    </div>
+  )
+}
+
+// ─── Formatting ───────────────────────────────────────────────────
+const fmt  = (n, d = 2) => isNaN(n) || !isFinite(n) ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
+const fmtP = (n, d = 2) => isNaN(n) || !isFinite(n) ? '—' : `${fmt(n, d)}%`
+
+// ─── Instrument presets ───────────────────────────────────────────
+const INSTRUMENTS = [
+  { value: 'forex',   label: 'Forex (Major/Minor)',  contractSize: 100000, pipSize: 0.0001 },
+  { value: 'forexJPY',label: 'Forex JPY pair',       contractSize: 100000, pipSize: 0.01   },
+  { value: 'xauusd',  label: 'XAU/USD (Gold)',       contractSize: 100,    pipSize: 0.01   },
+  { value: 'xagusd',  label: 'XAG/USD (Silver)',     contractSize: 5000,   pipSize: 0.001  },
+  { value: 'oil',     label: 'Oil (WTI/Brent)',      contractSize: 1000,   pipSize: 0.01   },
+  { value: 'us30',    label: 'US30 (Dow Jones)',      contractSize: 1,      pipSize: 1      },
+  { value: 'nas100',  label: 'NAS100 (Nasdaq)',       contractSize: 1,      pipSize: 1      },
+  { value: 'spx500',  label: 'SPX500 (S&P 500)',     contractSize: 1,      pipSize: 0.1    },
+  { value: 'btc',     label: 'BTC/USD (Bitcoin)',    contractSize: 1,      pipSize: 1      },
+  { value: 'custom',  label: 'Custom',               contractSize: 100000, pipSize: 0.0001 },
+]
+
+// ═══════════════════════════════════════════════════════════════════
+// 1. PIP VALUE
+// ═══════════════════════════════════════════════════════════════════
+function PipValueCalc({ favs, onToggleFav }) {
+  const [inst, setInst] = useState('forex')
+  const [volume, setVolume] = useState(1)
+  const [contractSize, setContractSize] = useState(100000)
+  const [pipSize, setPipSize] = useState(0.0001)
+  const [rate, setRate] = useState(1)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') { setContractSize(p.contractSize); setPipSize(p.pipSize) }
+  }, [inst])
+
+  // Pip value in quote CCY = Volume × ContractSize × PipSize
+  // Pip value in account CCY = divide by exchange rate (quote/account)
+  const pipValueQuote   = volume * contractSize * pipSize
+  const pipValueAccount = pipValueQuote / rate
+
+  return (
+    <CalcCard id="pipvalue" title="Pip Value" icon={Activity} color="text-blue-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} tooltip="1 standard lot = 1.0 | Mini = 0.1 | Micro = 0.01" step="0.01" />
+        <Field label="Contract Size" value={contractSize} onChange={setContractSize} tooltip="Units per lot. Auto-fills per instrument." />
+        <Field label="Pip Size" value={pipSize} onChange={setPipSize} tooltip="Size of 1 pip. Forex = 0.0001, JPY = 0.01, Gold = 0.01" step="0.0001" />
+        <Field label="Quote→Account Rate" value={rate} onChange={setRate} tooltip="If pair quote currency ≠ account currency, enter the conversion rate. E.g. EURUSD account in USD = 1." />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Pip Value (Quote CCY)" value={fmt(pipValueQuote, 4)} tooltip="Volume × Contract Size × Pip Size" />
+        <Result label="Pip Value (Account CCY)" value={`$${fmt(pipValueAccount, 4)}`} highlight tooltip="Divide by Quote→Account Rate" />
+      </div>
+      <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Formula: <span className="text-white">Volume × Contract Size × Pip Size ÷ Rate</span></p>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 2. LOT SIZE (RISK-BASED)
+// ═══════════════════════════════════════════════════════════════════
+function LotSizeCalc({ favs, onToggleFav }) {
+  const [balance, setBalance] = useState(10000)
+  const [riskPct, setRiskPct] = useState(1)
+  const [slPips, setSlPips] = useState(20)
+  const [inst, setInst] = useState('forex')
+  const [contractSize, setContractSize] = useState(100000)
+  const [pipSize, setPipSize] = useState(0.0001)
+  const [rate, setRate] = useState(1)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') { setContractSize(p.contractSize); setPipSize(p.pipSize) }
+  }, [inst])
+
+  const riskAmount  = (balance * riskPct) / 100
+  const pipValuePerLot = contractSize * pipSize / rate
+  const lotSize     = riskAmount / (slPips * pipValuePerLot)
+
+  return (
+    <CalcCard id="lotsize" title="Lot Size (Risk-Based)" icon={Target} color="text-green-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Account Balance" value={balance} onChange={setBalance} suffix="$" />
+        <Field label="Risk %" value={riskPct} onChange={setRiskPct} suffix="%" tooltip="1–2% recommended per trade." />
+        <Field label="Stop Loss (pips)" value={slPips} onChange={setSlPips} tooltip="Distance from entry to SL in pips." />
+        <Field label="Quote→Account Rate" value={rate} onChange={setRate} tooltip="Leave as 1 if quote currency = account currency." />
+        <Field label="Contract Size" value={contractSize} onChange={setContractSize} />
+        <Field label="Pip Size" value={pipSize} onChange={setPipSize} step="0.0001" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Risk Amount" value={`$${fmt(riskAmount)}`} tooltip="Balance × Risk %" />
+        <Result label="Pip Value / Lot" value={`$${fmt(pipValuePerLot, 4)}`} />
+        <Result label="Lot Size" value={fmt(lotSize, 4)} highlight tooltip="Risk Amount ÷ (SL Pips × Pip Value per Lot)" />
+        <Result label="Standard Lots" value={fmt(Math.floor(lotSize * 100) / 100, 2)} />
+      </div>
+      <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Formula: <span className="text-white">(Balance × Risk%) ÷ (SL Pips × Pip Value per Lot)</span></p>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 3. MARGIN REQUIRED + REVERSE (FIND LEVERAGE)
+// ═══════════════════════════════════════════════════════════════════
+function MarginCalc({ favs, onToggleFav }) {
+  const [mode, setMode] = useState('margin')   // 'margin' | 'leverage'
+  const [inst, setInst] = useState('forex')
+  const [volume, setVolume] = useState(1)
+  const [contractSize, setContractSize] = useState(100000)
+  const [price, setPrice] = useState(1.1000)
+  const [leverage, setLeverage] = useState(30)
+  const [marginInput, setMarginInput] = useState(3667)
+  const [accountBalance, setAccountBalance] = useState(10000)
+  const [rate, setRate] = useState(1)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') setContractSize(p.contractSize)
+  }, [inst])
+
+  const positionValue = volume * contractSize * price / rate
+  const marginRequired = positionValue / leverage
+  const marginPct = (1 / leverage) * 100
+  const freeMargin = accountBalance - marginRequired
+  const marginOfBalance = (marginRequired / accountBalance) * 100
+
+  // Reverse: find leverage
+  const impliedLeverage = positionValue / marginInput
+  const impliedMarginPct = (1 / impliedLeverage) * 100
+
+  return (
+    <CalcCard id="margin" title="Margin Required" icon={DollarSign} color="text-yellow-400" favs={favs} onToggleFav={onToggleFav}>
+      {/* Mode tabs */}
+      <div className="flex gap-2 mb-1">
+        {[['margin','Find Margin'],['leverage','Find Leverage']].map(([v,l]) => (
+          <button key={v} onClick={() => setMode(v)}
+            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${mode === v ? 'bg-brand-gold text-black' : 'bg-brand-dark border border-brand-border text-brand-muted hover:text-white'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} tooltip="Number of lots. 1 standard = 1.0" step="0.01" />
+        <Field label="Contract Size" value={contractSize} onChange={setContractSize} tooltip="Auto-fills per instrument. XAUUSD = 100, Forex = 100,000." />
+        <Field label="Entry Price" value={price} onChange={setPrice} tooltip="Current market price of the instrument." step="0.00001" />
+        <Field label="Quote→Account Rate" value={rate} onChange={setRate} tooltip="If instrument quote CCY ≠ account CCY, enter conversion rate. Otherwise 1." />
+        {mode === 'margin'
+          ? <Field label="Leverage" value={leverage} onChange={setLeverage} tooltip="e.g. 30 = 30:1. CySEC retail max: Forex 30:1, Gold 20:1, Index 20:1, Crypto 2:1." />
+          : <Field label="Available Margin ($)" value={marginInput} onChange={setMarginInput} suffix="$" tooltip="The margin you have or want to use — calculates the leverage that implies." />
+        }
+        <Field label="Account Balance ($)" value={accountBalance} onChange={setAccountBalance} suffix="$" tooltip="Used to show free margin remaining." />
+      </div>
+
+      {mode === 'margin' ? (
+        <>
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            <Result label="Position Value" value={`$${fmt(positionValue)}`} tooltip="Volume × Contract Size × Price ÷ Rate" />
+            <Result label="Margin Required" value={`$${fmt(marginRequired)}`} highlight tooltip="Position Value ÷ Leverage" />
+            <Result label="Margin %" value={fmtP(marginPct)} tooltip="1 ÷ Leverage × 100" />
+            <Result label="Free Margin" value={`$${fmt(freeMargin)}`} warn={freeMargin < 0} tooltip="Account Balance − Margin Required" />
+            <Result label="Margin of Balance" value={fmtP(marginOfBalance)} tooltip="Margin Required ÷ Balance × 100" />
+          </div>
+          <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Formula: <span className="text-white">(Volume × Contract Size × Price ÷ Rate) ÷ Leverage</span></p>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            <Result label="Position Value" value={`$${fmt(positionValue)}`} />
+            <Result label="Implied Leverage" value={`${fmt(impliedLeverage, 1)}:1`} highlight tooltip="Position Value ÷ Available Margin" />
+            <Result label="Margin %" value={fmtP(impliedMarginPct)} tooltip="1 ÷ Implied Leverage × 100" />
+            <Result label="Free Margin" value={`$${fmt(accountBalance - marginInput)}`} warn={accountBalance - marginInput < 0} />
+          </div>
+          <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Formula: <span className="text-white">Leverage = (Volume × Contract Size × Price) ÷ Margin</span></p>
+        </>
+      )}
+
+      <div className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2 mt-1 space-y-0.5">
+        <p className="text-brand-gold font-medium mb-1">CySEC Retail Leverage Limits</p>
+        <p>Forex Major: 30:1 &nbsp;·&nbsp; Forex Minor: 20:1 &nbsp;·&nbsp; Gold: 20:1 &nbsp;·&nbsp; Major Index: 20:1 &nbsp;·&nbsp; Other Commodity: 10:1 &nbsp;·&nbsp; Crypto: 2:1</p>
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 4. MARGIN LEVEL %
+// ═══════════════════════════════════════════════════════════════════
+function MarginLevelCalc({ favs, onToggleFav }) {
+  const [equity, setEquity] = useState(10000)
+  const [usedMargin, setUsedMargin] = useState(1000)
+
+  const marginLevel = (equity / usedMargin) * 100
+  const status = marginLevel >= 200 ? { label: 'Safe', color: 'text-green-400' } :
+    marginLevel >= 120 ? { label: 'Warning Zone', color: 'text-yellow-400' } :
+    marginLevel >= 100 ? { label: 'Margin Call Zone', color: 'text-orange-400' } :
+    { label: '⚠️ Stop Out Risk', color: 'text-red-400' }
+
+  return (
+    <CalcCard id="marginlevel" title="Margin Level %" icon={Percent} color="text-orange-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Equity ($)" value={equity} onChange={setEquity} suffix="$" tooltip="Balance + all floating P&L." />
+        <Field label="Used Margin ($)" value={usedMargin} onChange={setUsedMargin} suffix="$" tooltip="Sum of all margin locked in open positions." />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Margin Level" value={fmtP(marginLevel)} highlight tooltip="(Equity ÷ Used Margin) × 100" />
+        <Result label="Status" value={<span className={status.color}>{status.label}</span>} />
+      </div>
+      <div className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2 space-y-0.5">
+        <p>Formula: <span className="text-white">(Equity ÷ Used Margin) × 100</span></p>
+        <p>🟢 &gt;200% Safe &nbsp;·&nbsp; 🟡 120–200% Warning &nbsp;·&nbsp; 🟠 100–120% Margin Call &nbsp;·&nbsp; 🔴 &lt;100% Stop Out</p>
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 5. SLIPPAGE
+// ═══════════════════════════════════════════════════════════════════
+function SlippageCalc({ favs, onToggleFav }) {
+  const [expected, setExpected] = useState(1.1000)
+  const [executed, setExecuted] = useState(1.1003)
+  const [volume, setVolume] = useState(1)
+  const [inst, setInst] = useState('forex')
+  const [contractSize, setContractSize] = useState(100000)
+  const [pipSize, setPipSize] = useState(0.0001)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') { setContractSize(p.contractSize); setPipSize(p.pipSize) }
+  }, [inst])
+
+  const slipPips = Math.abs((executed - expected) / pipSize)
+  const slipCost = slipPips * volume * contractSize * pipSize
+  const slipPct  = Math.abs((executed - expected) / expected) * 100
+
+  return (
+    <CalcCard id="slippage" title="Slippage" icon={AlertTriangle} color="text-red-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Expected Price" value={expected} onChange={setExpected} step="0.00001" />
+        <Field label="Executed Price" value={executed} onChange={setExecuted} step="0.00001" />
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} step="0.01" />
+        <Field label="Pip Size" value={pipSize} onChange={setPipSize} step="0.0001" />
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-1">
+        <Result label="Slippage (pips)" value={fmt(slipPips, 1)} highlight />
+        <Result label="Cost ($)" value={`$${fmt(slipCost)}`} highlight tooltip="Pips × Volume × Contract Size × Pip Size" />
+        <Result label="Slippage %" value={fmtP(slipPct, 4)} />
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 6. SWAP / OVERNIGHT
+// ═══════════════════════════════════════════════════════════════════
+function SwapCalc({ favs, onToggleFav }) {
+  const [volume, setVolume] = useState(1)
+  const [contractSize, setContractSize] = useState(100000)
+  const [swapRate, setSwapRate] = useState(-2.5)
+  const [days, setDays] = useState(1)
+  const [price, setPrice] = useState(1.1)
+  const [inst, setInst] = useState('forex')
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') setContractSize(p.contractSize)
+  }, [inst])
+
+  // Swap = Volume × ContractSize × Price × (SwapRate/100) / 360 × Days
+  const swapPerDay = volume * contractSize * price * (swapRate / 100) / 360
+  const swapTotal  = swapPerDay * days
+
+  return (
+    <CalcCard id="swap" title="Swap / Overnight Fee" icon={Activity} color="text-purple-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} step="0.01" />
+        <Field label="Contract Size" value={contractSize} onChange={setContractSize} />
+        <Field label="Swap Rate (annual %)" value={swapRate} onChange={setSwapRate} suffix="%" tooltip="Annual rate from MT4/MT5 instrument spec. Negative = you pay." />
+        <Field label="Days Held" value={days} onChange={setDays} tooltip="Wednesday counts as ×3 (triple swap). Enter actual calendar days." />
+        <Field label="Current Price" value={price} onChange={setPrice} step="0.00001" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Swap per Night" value={`$${fmt(swapPerDay)}`} sub={swapPerDay < 0 ? 'You pay' : 'You receive'} />
+        <Result label={`Total (${days} night${days > 1 ? 's' : ''})`} value={`$${fmt(swapTotal)}`} highlight sub={swapTotal < 0 ? 'Total cost' : 'Total credit'} />
+      </div>
+      <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Formula: <span className="text-white">Volume × Contract Size × Price × (Rate/100) ÷ 360 × Days</span></p>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 7. SPREAD COST
+// ═══════════════════════════════════════════════════════════════════
+function SpreadCalc({ favs, onToggleFav }) {
+  const [ask, setAsk] = useState(1.10050)
+  const [bid, setBid] = useState(1.10030)
+  const [volume, setVolume] = useState(1)
+  const [inst, setInst] = useState('forex')
+  const [contractSize, setContractSize] = useState(100000)
+  const [pipSize, setPipSize] = useState(0.0001)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') { setContractSize(p.contractSize); setPipSize(p.pipSize) }
+  }, [inst])
+
+  const spreadPips = (ask - bid) / pipSize
+  const spreadCost = spreadPips * volume * contractSize * pipSize
+
+  return (
+    <CalcCard id="spread" title="Spread Cost" icon={BarChart2} color="text-cyan-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Ask Price" value={ask} onChange={setAsk} tooltip="Price to buy (higher)." step="0.00001" />
+        <Field label="Bid Price" value={bid} onChange={setBid} tooltip="Price to sell (lower)." step="0.00001" />
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} step="0.01" />
+        <Field label="Pip Size" value={pipSize} onChange={setPipSize} step="0.0001" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Spread (pips)" value={fmt(spreadPips, 1)} highlight tooltip="(Ask − Bid) ÷ Pip Size" />
+        <Result label="Spread Cost ($)" value={`$${fmt(spreadCost)}`} highlight tooltip="Spread Pips × Volume × Contract Size × Pip Size" />
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 8. P&L
+// ═══════════════════════════════════════════════════════════════════
+function PnLCalc({ favs, onToggleFav }) {
+  const [direction, setDirection] = useState('buy')
+  const [entry, setEntry] = useState(1.1000)
+  const [exit, setExit] = useState(1.1050)
+  const [volume, setVolume] = useState(1)
+  const [inst, setInst] = useState('forex')
+  const [contractSize, setContractSize] = useState(100000)
+  const [pipSize, setPipSize] = useState(0.0001)
+  const [rate, setRate] = useState(1)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') { setContractSize(p.contractSize); setPipSize(p.pipSize) }
+  }, [inst])
+
+  const priceDiff = direction === 'buy' ? exit - entry : entry - exit
+  const pips      = priceDiff / pipSize
+  // P&L = pips × volume × contractSize × pipSize ÷ rate
+  const pnl       = pips * volume * contractSize * pipSize / rate
+
+  return (
+    <CalcCard id="pnl" title="Profit / Loss" icon={TrendingUp} color="text-green-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Direction" value={direction} onChange={setDirection} options={[{ value: 'buy', label: 'Buy (Long)' }, { value: 'sell', label: 'Sell (Short)' }]} />
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} step="0.01" />
+        <Field label="Entry Price" value={entry} onChange={setEntry} step="0.00001" />
+        <Field label="Exit Price" value={exit} onChange={setExit} step="0.00001" />
+        <Field label="Contract Size" value={contractSize} onChange={setContractSize} />
+        <Field label="Quote→Account Rate" value={rate} onChange={setRate} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 mt-1">
+        <Result label="Pips" value={fmt(pips, 1)} />
+        <Result label="P&L" value={`${pnl >= 0 ? '+' : ''}$${fmt(pnl)}`} highlight />
+        <Result label="Status" value={<span className={pnl >= 0 ? 'text-green-400' : 'text-red-400'}>{pnl >= 0 ? 'Profit' : 'Loss'}</span>} />
+      </div>
+      <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Formula: <span className="text-white">Pips × Volume × Contract Size × Pip Size ÷ Rate</span></p>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 9. BREAK EVEN
+// ═══════════════════════════════════════════════════════════════════
+function BreakevenCalc({ favs, onToggleFav }) {
+  const [entry, setEntry] = useState(1.1000)
+  const [commission, setCommission] = useState(7)
+  const [spreadPips, setSpreadPips] = useState(1)
+  const [swap, setSwap] = useState(0)
+  const [volume, setVolume] = useState(1)
+  const [pipValue, setPipValue] = useState(10)
+  const [inst, setInst] = useState('forex')
+  const [pipSize, setPipSize] = useState(0.0001)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') setPipSize(p.pipSize)
+  }, [inst])
+
+  const spreadCost     = spreadPips * pipValue * volume
+  const totalCost      = Number(commission) + spreadCost + Math.abs(swap)
+  const breakEvenPips  = totalCost / (pipValue * volume)
+  const breakEvenPrice = Number(entry) + breakEvenPips * pipSize
+
+  return (
+    <CalcCard id="breakeven" title="Break Even Price" icon={Target} color="text-yellow-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Entry Price" value={entry} onChange={setEntry} step="0.00001" />
+        <Field label="Commission ($)" value={commission} onChange={setCommission} suffix="$" tooltip="Round-trip commission total." />
+        <Field label="Spread (pips)" value={spreadPips} onChange={setSpreadPips} />
+        <Field label="Swap ($)" value={swap} onChange={setSwap} suffix="$" tooltip="Overnight swap cost. Negative = cost." />
+        <Field label="Pip Value (per lot)" value={pipValue} onChange={setPipValue} suffix="$" />
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} step="0.01" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Total Cost" value={`$${fmt(totalCost)}`} tooltip="Commission + Spread Cost + Swap" />
+        <Result label="Break Even (pips)" value={fmt(breakEvenPips, 1)} highlight />
+        <Result label="Break Even Price" value={fmt(breakEvenPrice, 5)} highlight />
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 10. RISK/REWARD
+// ═══════════════════════════════════════════════════════════════════
+function RiskRewardCalc({ favs, onToggleFav }) {
+  const [entry, setEntry] = useState(1.1000)
+  const [sl, setSl] = useState(1.0950)
+  const [tp, setTp] = useState(1.1100)
+  const [inst, setInst] = useState('forex')
+  const [pipSize, setPipSize] = useState(0.0001)
+
+  useEffect(() => {
+    const p = INSTRUMENTS.find(i => i.value === inst)
+    if (p && inst !== 'custom') setPipSize(p.pipSize)
+  }, [inst])
+
+  const risk   = Math.abs(entry - sl) / pipSize
+  const reward = Math.abs(tp - entry) / pipSize
+  const rr     = reward / risk
+  const winRateNeeded = (1 / (1 + rr)) * 100
+
+  return (
+    <CalcCard id="rr" title="Risk / Reward Ratio" icon={BarChart2} color="text-indigo-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <Field label="Instrument" value={inst} onChange={setInst} options={INSTRUMENTS.map(i => ({ value: i.value, label: i.label }))} />
+        </div>
+        <Field label="Entry Price" value={entry} onChange={setEntry} step="0.00001" />
+        <Field label="Stop Loss" value={sl} onChange={setSl} step="0.00001" />
+        <Field label="Take Profit" value={tp} onChange={setTp} step="0.00001" />
+        <Field label="Pip Size" value={pipSize} onChange={setPipSize} step="0.0001" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Risk (pips)" value={fmt(risk, 1)} />
+        <Result label="Reward (pips)" value={fmt(reward, 1)} />
+        <Result label="R:R Ratio" value={`1 : ${fmt(rr, 2)}`} highlight tooltip="Aim for ≥ 1:2" />
+        <Result label="Min Win Rate Needed" value={fmtP(winRateNeeded)} tooltip="1 ÷ (1 + R:R) × 100" />
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 11. DRAWDOWN & RECOVERY
+// ═══════════════════════════════════════════════════════════════════
+function DrawdownCalc({ favs, onToggleFav }) {
+  const [peak, setPeak] = useState(10000)
+  const [trough, setTrough] = useState(8500)
+  const [balance, setBalance] = useState(10000)
+  const [dd, setDd] = useState(20)
+
+  const drawdownAmt      = peak - trough
+  const drawdownPct      = (drawdownAmt / peak) * 100
+  // Recovery needed = loss% / (1 - loss%) × 100
+  const recoveryNeeded   = (drawdownPct / (100 - drawdownPct)) * 100
+  const balanceAfterDD   = balance * (1 - dd / 100)
+  const gainToRecover    = (dd / (100 - dd)) * 100
+
+  return (
+    <CalcCard id="drawdown" title="Drawdown & Recovery" icon={TrendingDown} color="text-red-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="border border-brand-border rounded-lg p-3 mb-3">
+        <p className="text-xs text-brand-gold font-medium mb-2">Peak → Trough</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Peak Balance ($)" value={peak} onChange={setPeak} />
+          <Field label="Trough Balance ($)" value={trough} onChange={setTrough} />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <Result label="Drawdown $" value={`$${fmt(drawdownAmt)}`} />
+          <Result label="Drawdown %" value={fmtP(drawdownPct)} highlight />
+          <Result label="Recovery Needed %" value={fmtP(recoveryNeeded)} highlight tooltip="DD% ÷ (100% − DD%) × 100 — e.g. 50% loss needs 100% gain" sub="To return to peak" />
+        </div>
+      </div>
+      <div className="border border-brand-border rounded-lg p-3">
+        <p className="text-xs text-brand-gold font-medium mb-2">Recovery Calculator</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Starting Balance ($)" value={balance} onChange={setBalance} />
+          <Field label="Drawdown %" value={dd} onChange={setDd} suffix="%" />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <Result label="Balance After DD" value={`$${fmt(balanceAfterDD)}`} />
+          <Result label="Gain to Recover" value={fmtP(gainToRecover)} highlight tooltip="DD% ÷ (1 − DD%) — 50% loss requires 100% gain" />
+        </div>
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 12. MARGIN CALL / STOP OUT
+// ═══════════════════════════════════════════════════════════════════
+function MarginCallCalc({ favs, onToggleFav }) {
+  const [balance, setBalance] = useState(10000)
+  const [usedMargin, setUsedMargin] = useState(1000)
+  const [mcLevel, setMcLevel] = useState(100)
+  const [soLevel, setSoLevel] = useState(50)
+
+  const marginCallEquity = usedMargin * (mcLevel / 100)
+  const stopOutEquity    = usedMargin * (soLevel / 100)
+  const maxLoss          = balance - marginCallEquity
+  const maxLossPct       = (maxLoss / balance) * 100
+  const floatAtSO        = stopOutEquity - balance    // floating P&L required to trigger SO
+
+  return (
+    <CalcCard id="mc" title="Margin Call / Stop Out" icon={AlertTriangle} color="text-orange-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Account Balance ($)" value={balance} onChange={setBalance} />
+        <Field label="Used Margin ($)" value={usedMargin} onChange={setUsedMargin} tooltip="Total margin locked in open trades." />
+        <Field label="Margin Call Level %" value={mcLevel} onChange={setMcLevel} suffix="%" tooltip="Equity must reach this % of used margin. Typically 100%." />
+        <Field label="Stop Out Level %" value={soLevel} onChange={setSoLevel} suffix="%" tooltip="Positions auto-closed at this level. Monaxa retail = 50%." />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Margin Call Equity" value={`$${fmt(marginCallEquity)}`} tooltip="Used Margin × MC Level / 100" />
+        <Result label="Stop Out Equity" value={`$${fmt(stopOutEquity)}`} tooltip="Used Margin × SO Level / 100" warn={stopOutEquity > balance} />
+        <Result label="Loss Before MC" value={`$${fmt(maxLoss)}`} highlight tooltip="Balance − Margin Call Equity" />
+        <Result label="Max Loss %" value={fmtP(maxLossPct)} highlight />
+        <Result label="Float P&L at Stop Out" value={`$${fmt(floatAtSO)}`} tooltip="Equity at stop out minus current balance — how much floating loss triggers it" warn={floatAtSO < 0} />
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 13. WIN RATE & EXPECTANCY
+// ═══════════════════════════════════════════════════════════════════
+function WinRateCalc({ favs, onToggleFav }) {
+  const [wins, setWins] = useState(60)
+  const [losses, setLosses] = useState(40)
+  const [avgWin, setAvgWin] = useState(150)
+  const [avgLoss, setAvgLoss] = useState(100)
+
+  const total        = Number(wins) + Number(losses)
+  const winRate      = (wins / total) * 100
+  const lossRate     = 100 - winRate
+  // Profit Factor = Gross Profit / Gross Loss
+  const profitFactor = (wins * avgWin) / (losses * avgLoss)
+  // Expectancy = (WR × Avg Win) - (LR × Avg Loss)
+  const expectancy   = (winRate / 100) * avgWin - (lossRate / 100) * avgLoss
+  const totalPnl     = wins * avgWin - losses * avgLoss
+
+  return (
+    <CalcCard id="winrate" title="Win Rate & Expectancy" icon={TrendingUp} color="text-green-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Winning Trades" value={wins} onChange={setWins} />
+        <Field label="Losing Trades" value={losses} onChange={setLosses} />
+        <Field label="Avg Win ($)" value={avgWin} onChange={setAvgWin} suffix="$" />
+        <Field label="Avg Loss ($)" value={avgLoss} onChange={setAvgLoss} suffix="$" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Win Rate" value={fmtP(winRate)} highlight />
+        <Result label="Profit Factor" value={fmt(profitFactor, 2)} highlight tooltip=">1.5 = good. >2 = excellent." sub={profitFactor >= 2 ? '✅ Excellent' : profitFactor >= 1.5 ? '🟡 Good' : profitFactor >= 1 ? '⚠️ Marginal' : '🔴 Unprofitable'} />
+        <Result label="Expectancy / Trade" value={`$${fmt(expectancy)}`} highlight tooltip="(WR × Avg Win) − (LR × Avg Loss). Must be positive." />
+        <Result label="Total P&L" value={`${totalPnl >= 0 ? '+' : ''}$${fmt(totalPnl)}`} />
+      </div>
+      <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Expectancy = <span className="text-white">(WR × Avg Win) − (LR × Avg Loss)</span></p>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 14. KELLY CRITERION
+// ═══════════════════════════════════════════════════════════════════
+function KellyCalc({ favs, onToggleFav }) {
+  const [winRate, setWinRate] = useState(55)
+  const [rr, setRr] = useState(1.5)
+  const [balance, setBalance] = useState(10000)
+
+  const w          = winRate / 100
+  const l          = 1 - w
+  const kelly      = ((w * rr) - l) / rr    // Kelly% = (W × R − L) / R
+  const kellyPct   = kelly * 100
+  const halfKelly  = kellyPct / 2
+  const riskAmount = balance * (Math.max(0, halfKelly) / 100)
+
+  return (
+    <CalcCard id="kelly" title="Kelly Criterion" icon={CalcIcon} color="text-pink-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Win Rate %" value={winRate} onChange={setWinRate} suffix="%" />
+        <Field label="Avg R:R" value={rr} onChange={setRr} tooltip="Average reward divided by average risk per trade." />
+        <Field label="Account Balance ($)" value={balance} onChange={setBalance} suffix="$" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Full Kelly %" value={fmtP(Math.max(0, kellyPct))} tooltip="Theoretical optimal — too volatile in practice." />
+        <Result label="Half Kelly % (use this)" value={fmtP(Math.max(0, halfKelly))} highlight tooltip="Half Kelly is the practical recommendation." />
+        <Result label="Risk Amount (Half K)" value={`$${fmt(riskAmount)}`} highlight />
+        {kelly <= 0 && <Result label="⚠️ Warning" value="Negative edge" sub="Strategy not profitable at these parameters" warn />}
+      </div>
+      <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Kelly = <span className="text-white">((WR × R:R) − LR) ÷ R:R</span></p>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 15. COMMISSION
+// ═══════════════════════════════════════════════════════════════════
+function CommissionCalc({ favs, onToggleFav }) {
+  const [volume, setVolume] = useState(1)
+  const [commPerLot, setCommPerLot] = useState(7)
+  const [trades, setTrades] = useState(1)
+  const [type, setType] = useState('roundtrip')
+
+  const perTrade = type === 'roundtrip' ? commPerLot : commPerLot / 2
+  const totalComm = volume * perTrade * trades
+
+  return (
+    <CalcCard id="commission" title="Commission Cost" icon={DollarSign} color="text-blue-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Volume (lots)" value={volume} onChange={setVolume} step="0.01" />
+        <Field label="Commission per Lot ($)" value={commPerLot} onChange={setCommPerLot} suffix="$" tooltip="Broker's charge per lot. Some charge per side, some round-trip." />
+        <Field label="Number of Trades" value={trades} onChange={setTrades} />
+        <Field label="Type" value={type} onChange={setType} options={[{ value: 'roundtrip', label: 'Round Trip (open+close)' }, { value: 'oneside', label: 'One Side Only' }]} />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Per Trade" value={`$${fmt(volume * perTrade)}`} />
+        <Result label={`Total (${trades} trade${trades > 1 ? 's' : ''})`} value={`$${fmt(totalComm)}`} highlight />
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 16. RECOVERY FACTOR
+// ═══════════════════════════════════════════════════════════════════
+function RecoveryFactorCalc({ favs, onToggleFav }) {
+  const [netProfit, setNetProfit] = useState(5000)
+  const [maxDD, setMaxDD] = useState(2000)
+  const [balance, setBalance] = useState(10000)
+
+  const recoveryFactor = netProfit / maxDD
+  const returnPct      = (netProfit / balance) * 100
+
+  return (
+    <CalcCard id="recovery" title="Recovery Factor & Return" icon={TrendingUp} color="text-teal-400" favs={favs} onToggleFav={onToggleFav}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Net Profit ($)" value={netProfit} onChange={setNetProfit} suffix="$" />
+        <Field label="Max Drawdown ($)" value={maxDD} onChange={setMaxDD} suffix="$" />
+        <Field label="Starting Balance ($)" value={balance} onChange={setBalance} suffix="$" />
+      </div>
+      <div className="grid grid-cols-2 gap-2 mt-1">
+        <Result label="Recovery Factor" value={fmt(recoveryFactor, 2)} highlight
+          tooltip="Net Profit ÷ Max Drawdown. >3 excellent, >1.5 acceptable."
+          sub={recoveryFactor >= 3 ? '✅ Excellent' : recoveryFactor >= 1.5 ? '🟡 Acceptable' : '🔴 Poor'} />
+        <Result label="Return on Balance" value={fmtP(returnPct)} highlight />
+      </div>
+      <p className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2">Recovery Factor = <span className="text-white">Net Profit ÷ Max Drawdown (aim &gt;1.5)</span></p>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 17. PROP FIRM CHALLENGE TRACKER
+// ═══════════════════════════════════════════════════════════════════
+const PROP_FIRMS = [
+  {
+    value: 'ftmo',
+    label: 'FTMO',
+    phases: [
+      { name: 'Challenge', profitTarget: 10, maxDailyLoss: 5, maxTotalLoss: 10, minDays: 4, maxDays: 30 },
+      { name: 'Verification', profitTarget: 5, maxDailyLoss: 5, maxTotalLoss: 10, minDays: 4, maxDays: 60 },
+    ]
+  },
+  {
+    value: 'myforexfunds',
+    label: 'My Forex Funds (Rapid)',
+    phases: [
+      { name: 'Phase 1', profitTarget: 8, maxDailyLoss: 5, maxTotalLoss: 12, minDays: 0, maxDays: 30 },
+      { name: 'Phase 2', profitTarget: 5, maxDailyLoss: 5, maxTotalLoss: 12, minDays: 0, maxDays: 60 },
+    ]
+  },
+  {
+    value: 'e8',
+    label: 'E8 Funding',
+    phases: [
+      { name: 'Evaluation', profitTarget: 8, maxDailyLoss: 5, maxTotalLoss: 8, minDays: 0, maxDays: 0 },
+    ]
+  },
+  {
+    value: 'fte',
+    label: 'Funded Trading Plus',
+    phases: [
+      { name: 'Phase 1', profitTarget: 8, maxDailyLoss: 4, maxTotalLoss: 8, minDays: 0, maxDays: 0 },
+      { name: 'Phase 2', profitTarget: 5, maxDailyLoss: 4, maxTotalLoss: 8, minDays: 0, maxDays: 0 },
+    ]
+  },
+  {
+    value: 'apex',
+    label: 'Apex Trader Funding',
+    phases: [
+      { name: 'Evaluation', profitTarget: 6, maxDailyLoss: 3, maxTotalLoss: 6, minDays: 0, maxDays: 0 },
+    ]
+  },
+  {
+    value: 'custom',
+    label: 'Custom / Other',
+    phases: [
+      { name: 'Phase 1', profitTarget: 10, maxDailyLoss: 5, maxTotalLoss: 10, minDays: 0, maxDays: 30 },
+    ]
+  },
+]
+
+function PropChallengeCalc({ favs, onToggleFav }) {
+  const [firm, setFirm] = useState('ftmo')
+  const [phaseIdx, setPhaseIdx] = useState(0)
+  const [accountSize, setAccountSize] = useState(10000)
+  const [currentBalance, setCurrentBalance] = useState(10000)
+  const [balanceAtDayStart, setBalanceAtDayStart] = useState(10000)
+  const [tradingDays, setTradingDays] = useState(0)
+  // Custom overrides
+  const [customProfitTarget, setCustomProfitTarget] = useState(10)
+  const [customMaxDaily, setCustomMaxDaily] = useState(5)
+  const [customMaxTotal, setCustomMaxTotal] = useState(10)
+  const [customMinDays, setCustomMinDays] = useState(0)
+  const [customMaxDays, setCustomMaxDays] = useState(30)
+
+  const firmData = PROP_FIRMS.find(f => f.value === firm) || PROP_FIRMS[0]
+  const phases   = firmData.phases
+  const phase    = phases[Math.min(phaseIdx, phases.length - 1)]
+
+  const profitTargetPct = firm === 'custom' ? customProfitTarget : phase.profitTarget
+  const maxDailyPct     = firm === 'custom' ? customMaxDaily     : phase.maxDailyLoss
+  const maxTotalPct     = firm === 'custom' ? customMaxTotal     : phase.maxTotalLoss
+  const minDays         = firm === 'custom' ? customMinDays      : phase.minDays
+  const maxDays         = firm === 'custom' ? customMaxDays      : phase.maxDays
+
+  // Calculated targets (based on starting account size)
+  const profitTargetAmt = accountSize * (profitTargetPct / 100)
+  const maxDailyAmt     = accountSize * (maxDailyPct / 100)
+  const maxTotalAmt     = accountSize * (maxTotalPct / 100)
+
+  // Current status
+  const totalPnL        = currentBalance - accountSize
+  const totalPnLPct     = (totalPnL / accountSize) * 100
+  const dailyPnL        = currentBalance - balanceAtDayStart
+  const dailyPnLPct     = (dailyPnL / accountSize) * 100
+
+  // Limits used
+  const dailyLimitUsed  = (Math.abs(Math.min(0, dailyPnL)) / maxDailyAmt) * 100
+  const totalLimitUsed  = (Math.abs(Math.min(0, totalPnL)) / maxTotalAmt) * 100
+
+  // Remaining room
+  const dailyLossLeft   = maxDailyAmt + Math.min(0, dailyPnL)
+  const totalLossLeft   = maxTotalAmt + Math.min(0, totalPnL)
+  const profitRemaining = profitTargetAmt - Math.max(0, totalPnL)
+
+  // Breach checks
+  const dailyBreach  = dailyPnL <= -maxDailyAmt
+  const totalBreach  = totalPnL <= -maxTotalAmt
+  const targetHit    = totalPnL >= profitTargetAmt
+  const daysOk       = minDays === 0 || tradingDays >= minDays
+  const daysDone     = maxDays === 0 || tradingDays <= maxDays
+  const passed       = targetHit && daysOk && !dailyBreach && !totalBreach
+
+  // Safe lot size suggestion (risk 0.5% of remaining buffer)
+  const safeRiskAmt  = Math.min(dailyLossLeft, totalLossLeft) * 0.5
+
+  const statusColor = dailyBreach || totalBreach ? 'text-red-400' :
+    passed ? 'text-green-400' :
+    (dailyLimitUsed > 70 || totalLimitUsed > 70) ? 'text-orange-400' : 'text-brand-gold'
+
+  const statusLabel = dailyBreach ? '❌ Daily Limit Breached' :
+    totalBreach ? '❌ Total Drawdown Breached' :
+    passed ? '✅ Target Reached — PASS' :
+    (dailyLimitUsed > 80 || totalLimitUsed > 80) ? '⚠️ Danger Zone' :
+    dailyLimitUsed > 50 ? '🟡 Caution' : '🟢 On Track'
+
+  return (
+    <CalcCard id="prop" title="Prop Firm Challenge Tracker" icon={Trophy} color="text-brand-gold" favs={favs} onToggleFav={onToggleFav}>
+      {/* Firm + Phase selector */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-brand-muted mb-1.5 block">Firm</label>
+          <select value={firm} onChange={e => { setFirm(e.target.value); setPhaseIdx(0) }}
+            className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-gold">
+            {PROP_FIRMS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+        </div>
+        {firm !== 'custom' && phases.length > 1 && (
+          <div>
+            <label className="text-xs text-brand-muted mb-1.5 block">Phase</label>
+            <select value={phaseIdx} onChange={e => setPhaseIdx(Number(e.target.value))}
+              className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-gold">
+              {phases.map((p, i) => <option key={i} value={i}>{p.name}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Challenge rules display or custom inputs */}
+      {firm === 'custom' ? (
+        <div className="border border-brand-border rounded-lg p-3 space-y-3">
+          <p className="text-xs text-brand-gold font-medium">Custom Rules</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Profit Target %" value={customProfitTarget} onChange={setCustomProfitTarget} suffix="%" />
+            <Field label="Max Daily Loss %" value={customMaxDaily} onChange={setCustomMaxDaily} suffix="%" />
+            <Field label="Max Total Loss %" value={customMaxTotal} onChange={setCustomMaxTotal} suffix="%" />
+            <Field label="Min Trading Days" value={customMinDays} onChange={setCustomMinDays} />
+            <Field label="Max Days (0=unlimited)" value={customMaxDays} onChange={setCustomMaxDays} />
+          </div>
+        </div>
+      ) : (
+        <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+          <p className="text-xs text-brand-gold font-medium mb-2">{phase.name} Rules</p>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="text-center"><p className="text-brand-muted">Profit Target</p><p className="text-white font-bold">{profitTargetPct}%</p></div>
+            <div className="text-center"><p className="text-brand-muted">Max Daily Loss</p><p className="text-red-400 font-bold">{maxDailyPct}%</p></div>
+            <div className="text-center"><p className="text-brand-muted">Max Total Loss</p><p className="text-red-400 font-bold">{maxTotalPct}%</p></div>
+            {minDays > 0 && <div className="text-center"><p className="text-brand-muted">Min Days</p><p className="text-white font-bold">{minDays}</p></div>}
+            {maxDays > 0 && <div className="text-center"><p className="text-brand-muted">Max Days</p><p className="text-white font-bold">{maxDays}</p></div>}
+          </div>
+        </div>
+      )}
+
+      {/* Live inputs */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Account Size ($)" value={accountSize} onChange={setAccountSize} suffix="$" tooltip="Starting balance of the challenge account." />
+        <Field label="Current Balance ($)" value={currentBalance} onChange={setCurrentBalance} suffix="$" tooltip="Your balance right now." />
+        <Field label="Balance at Day Start ($)" value={balanceAtDayStart} onChange={setBalanceAtDayStart} suffix="$" tooltip="Balance at the start of today's trading session." />
+        <Field label="Trading Days Done" value={tradingDays} onChange={setTradingDays} tooltip="Number of days you have traded so far." />
+      </div>
+
+      {/* Status banner */}
+      <div className={`rounded-lg p-3 border text-center ${dailyBreach || totalBreach ? 'bg-red-400/10 border-red-400/30' : passed ? 'bg-green-400/10 border-green-400/30' : 'bg-brand-gold/5 border-brand-gold/20'}`}>
+        <p className={`font-bold text-sm ${statusColor}`}>{statusLabel}</p>
+      </div>
+
+      {/* Results grid */}
+      <div className="grid grid-cols-2 gap-2">
+        <Result label="Target Amount" value={`$${fmt(profitTargetAmt)}`} tooltip={`${profitTargetPct}% of account size`} />
+        <Result label="Total P&L" value={`${totalPnL >= 0 ? '+' : ''}$${fmt(totalPnL)} (${fmtP(totalPnLPct)})`}
+          highlight={totalPnL > 0} warn={totalBreach} />
+        <Result label="Daily P&L" value={`${dailyPnL >= 0 ? '+' : ''}$${fmt(dailyPnL)} (${fmtP(dailyPnLPct)})`}
+          highlight={dailyPnL > 0} warn={dailyBreach} />
+        <Result label="Max Daily Loss ($)" value={`$${fmt(maxDailyAmt)}`} sub={`${fmtP(dailyLimitUsed)} used`} />
+        <Result label="Daily Loss Remaining" value={`$${fmt(Math.max(0, dailyLossLeft))}`}
+          warn={dailyLossLeft < maxDailyAmt * 0.3} highlight={dailyLossLeft >= maxDailyAmt * 0.7} />
+        <Result label="Total Loss Remaining" value={`$${fmt(Math.max(0, totalLossLeft))}`}
+          warn={totalLossLeft < maxTotalAmt * 0.3} highlight={totalLossLeft >= maxTotalAmt * 0.7} />
+        <Result label="Profit Still Needed" value={profitRemaining > 0 ? `$${fmt(profitRemaining)}` : '✅ Done'} highlight={profitRemaining <= 0} />
+        <Result label="Safe Risk per Trade" value={`$${fmt(Math.max(0, safeRiskAmt))}`}
+          tooltip="50% of your smaller remaining buffer (daily vs total). Suggested max risk per trade." highlight />
+        {minDays > 0 && <Result label="Min Days Progress" value={`${tradingDays} / ${minDays}`}
+          highlight={tradingDays >= minDays} warn={maxDays > 0 && tradingDays > maxDays} />}
+      </div>
+
+      <div className="text-xs text-brand-muted bg-brand-dark rounded px-3 py-2 mt-1">
+        <span className="text-brand-gold font-medium">Note: </span>
+        Daily drawdown rules vary by firm. Some use floating equity (FTMO), some use closed P&L only. Always verify with the firm's specific terms.
+      </div>
+    </CalcCard>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN PAGE
+// ═══════════════════════════════════════════════════════════════════
+const CATEGORIES = [
+  { label: '★ Favourites', value: 'favs' },
+  { label: 'All', value: 'all' },
+  { label: 'Position Sizing', value: 'sizing' },
+  { label: 'Costs', value: 'costs' },
+  { label: 'Risk', value: 'risk' },
+  { label: 'Performance', value: 'perf' },
+  { label: '🏆 Prop', value: 'prop' },
+]
+
+export default function Calculator() {
+  const [activeCategory, setActiveCategory] = useState('all')
+  const [favs, toggleFav] = useFavourites()
+
+  const props = { favs, onToggleFav: toggleFav }
+  const show = (cat) => activeCategory === 'all' || activeCategory === cat ||
+    (activeCategory === 'favs' && favs.length === 0) // show all if no favs yet
+
+  const favFilter = (id) => activeCategory !== 'favs' || favs.includes(id)
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div>
+        <h1 className="font-display text-2xl font-bold text-white">Trading Calculator</h1>
+        <p className="text-brand-muted text-sm mt-1">Full suite — instrument-aware, correct formulas, reverse calculations</p>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {CATEGORIES.map(c => (
+          <button key={c.value} onClick={() => setActiveCategory(c.value)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeCategory === c.value ? 'bg-brand-gold text-black' : 'bg-brand-surface border border-brand-border text-brand-muted hover:text-white'}`}>
+            {c.label}
+            {c.value === 'favs' && favs.length > 0 && <span className="ml-1 bg-brand-gold/20 text-brand-gold rounded-full px-1">{favs.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {activeCategory === 'favs' && favs.length === 0 && (
+        <div className="bg-brand-surface border border-brand-border rounded-xl px-5 py-6 text-center">
+          <Star size={20} className="text-brand-muted mx-auto mb-2" />
+          <p className="text-brand-muted text-sm">No favourites yet — click the ★ on any calculator to pin it here.</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {(show('sizing') && favFilter('pipvalue')) && <PipValueCalc {...props} />}
+        {(show('sizing') && favFilter('lotsize')) && <LotSizeCalc {...props} />}
+        {(show('sizing') && favFilter('margin')) && <MarginCalc {...props} />}
+        {(show('risk') && favFilter('marginlevel')) && <MarginLevelCalc {...props} />}
+        {(show('costs') && favFilter('slippage')) && <SlippageCalc {...props} />}
+        {(show('costs') && favFilter('swap')) && <SwapCalc {...props} />}
+        {(show('costs') && favFilter('spread')) && <SpreadCalc {...props} />}
+        {(show('risk') && favFilter('pnl')) && <PnLCalc {...props} />}
+        {(show('costs') && favFilter('breakeven')) && <BreakevenCalc {...props} />}
+        {(show('risk') && favFilter('rr')) && <RiskRewardCalc {...props} />}
+        {(show('risk') && favFilter('drawdown')) && <DrawdownCalc {...props} />}
+        {(show('risk') && favFilter('mc')) && <MarginCallCalc {...props} />}
+        {(show('perf') && favFilter('winrate')) && <WinRateCalc {...props} />}
+        {(show('perf') && favFilter('kelly')) && <KellyCalc {...props} />}
+        {(show('costs') && favFilter('commission')) && <CommissionCalc {...props} />}
+        {(show('perf') && favFilter('recovery')) && <RecoveryFactorCalc {...props} />}
+        {(show('prop') && favFilter('prop')) && <PropChallengeCalc {...props} />}
+      </div>
+    </div>
+  )
+}

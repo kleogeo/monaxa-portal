@@ -699,7 +699,10 @@ export default function Dashboard() {
   const [expandDone, setExpandDone] = useState(false)
   const [search, setSearch] = useState('')
   const [showCreateTask, setShowCreateTask] = useState(false)
-  const [createForm, setCreateForm] = useState({ title: '', description: '', type: 'task', priority: 'medium', due_date: '', estimated_hours: '', assigned_to: '' })
+  const [createForm, setCreateForm] = useState({ title: '', description: '', type: 'task', priority: 'medium', due_date: '', estimated_hours: '', assigned_users: [] })
+  const [dashBg, setDashBg] = useState(() => localStorage.getItem('dash_bg') || '')
+  const [showDashCustom, setShowDashCustom] = useState(false)
+  const [mood, setMood] = useState(() => { try { return JSON.parse(localStorage.getItem('dash_mood') || '{"emoji":"","text":""}') } catch { return {emoji:'',text:''} } })
   const searchRef = useRef(null)
 
   const fetchData = useCallback(async () => {
@@ -763,17 +766,22 @@ export default function Dashboard() {
 
   async function createTask(e) {
     e.preventDefault()
+    const assignees = createForm.assigned_users?.length ? createForm.assigned_users : [profile.id]
     const payload = {
-      ...createForm,
+      title: createForm.title,
+      description: createForm.description,
+      type: createForm.type,
+      priority: createForm.priority,
       created_by: profile.id,
-      assigned_to: createForm.assigned_to || profile.id,
+      assigned_to: assignees[0],
+      assigned_to_users: assignees,
       due_date: createForm.due_date || null,
       estimated_hours: createForm.estimated_hours || null,
       status: 'open',
     }
     await supabase.from('tasks').insert(payload)
     setShowCreateTask(false)
-    setCreateForm({ title: '', description: '', type: 'task', priority: 'medium', due_date: '', estimated_hours: '', assigned_to: '' })
+    setCreateForm({ title: '', description: '', type: 'task', priority: 'medium', due_date: '', estimated_hours: '', assigned_users: [] })
     fetchData()
   }
 
@@ -830,6 +838,9 @@ export default function Dashboard() {
           {urgentCount > 0 && <div className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5"><AlertCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{urgentCount} urgent</span></div>}
           {overdueCount > 0 && <div className="flex items-center gap-1.5 bg-orange-400/10 border border-orange-400/20 rounded-lg px-3 py-1.5"><Clock size={13} className="text-orange-400" /><span className="text-orange-400 text-xs font-medium">{overdueCount} overdue</span></div>}
           {helpCount > 0 && <div className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5"><HelpCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{helpCount} need help</span></div>}
+          <button onClick={() => setShowDashCustom(true)} title="Customise Dashboard" className="flex items-center gap-1.5 bg-brand-surface border border-brand-border hover:border-brand-gold text-brand-muted hover:text-brand-gold px-3 py-1.5 rounded-lg text-xs transition-colors">
+            ✨ Customise
+          </button>
           <button onClick={() => setShowCreateTask(true)} title="New Task (N)" className="flex items-center gap-1.5 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold px-3 py-1.5 rounded-lg text-xs transition-colors">
             <Plus size={13} /> New Task
           </button>
@@ -960,7 +971,86 @@ export default function Dashboard() {
       </div>
 
       {/* Activity Feed */}
+      {/* Mood Widget */}
+      <div className="bg-brand-surface border border-brand-border rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-brand-muted text-xs font-medium">TEAM MOOD</p>
+          <div className="flex items-center gap-2">
+            <input value={mood.emoji} onChange={e => { const m = {...mood, emoji: e.target.value}; setMood(m); localStorage.setItem('dash_mood', JSON.stringify(m)) }}
+              placeholder="😊" className="w-10 bg-brand-dark border border-brand-border rounded px-1 py-0.5 text-center text-sm focus:outline-none" maxLength={2} />
+            <input value={mood.text} onChange={e => { const m = {...mood, text: e.target.value}; setMood(m); localStorage.setItem('dash_mood', JSON.stringify(m)) }}
+              placeholder="How are you feeling?" className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-brand-gold w-48" maxLength={40} />
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {profiles.map(p => {
+            const isMe = p.id === profile?.id
+            return (
+              <div key={p.id} className="flex items-center gap-1.5 bg-brand-dark border border-brand-border rounded-full px-3 py-1.5">
+                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-black flex-shrink-0"
+                  style={{ backgroundColor: p.avatar_color || '#C9A84C' }}>
+                  {p.full_name?.split(' ').map(n => n[0]).join('').slice(0,2)}
+                </div>
+                <span className="text-xs text-white">{p.full_name?.split(' ')[0]}</span>
+                {isMe && mood.emoji && <span className="text-sm">{mood.emoji}</span>}
+                {isMe && mood.text && <span className="text-xs text-brand-muted">{mood.text}</span>}
+                {!isMe && <span className="text-brand-muted text-xs">...</span>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
       <ActivityFeed profiles={profiles} />
+
+      {/* Customise Dashboard Modal */}
+      {showDashCustom && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setShowDashCustom(false)}>
+          <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-semibold text-white text-sm">✨ Customise Your Dashboard</h3>
+              <button onClick={() => setShowDashCustom(false)} className="text-brand-muted hover:text-white"><X size={16} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-brand-muted text-xs mb-2 block">BACKGROUND IMAGE</label>
+                {dashBg && (
+                  <div className="relative mb-2">
+                    <img src={dashBg} alt="bg preview" className="w-full h-20 object-cover rounded-lg opacity-60" />
+                    <button onClick={() => { setDashBg(''); localStorage.removeItem('dash_bg') }}
+                      className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-1 hover:bg-red-400/80"><X size={10} /></button>
+                  </div>
+                )}
+                <label className="flex items-center justify-center gap-2 border border-dashed border-brand-border rounded-lg py-3 cursor-pointer hover:border-brand-gold transition-colors text-brand-muted hover:text-brand-gold text-xs">
+                  <input type="file" accept="image/*" className="hidden" onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const reader = new FileReader()
+                    reader.onload = ev => { setDashBg(ev.target.result); localStorage.setItem('dash_bg', ev.target.result) }
+                    reader.readAsDataURL(file)
+                  }} />
+                  📁 Upload background image
+                </label>
+                <p className="text-brand-muted text-[10px] mt-1">Only visible to you. Stored in your browser.</p>
+              </div>
+              <div>
+                <label className="text-brand-muted text-xs mb-2 block">QUICK BACKGROUND COLOURS</label>
+                <div className="flex gap-2 flex-wrap">
+                  {['#0a0a0a','#0d1117','#0f172a','#1a0a2e','#0a1628','#1a1a0a','#1a0a0a',''].map((c,i) => (
+                    <button key={i} onClick={() => { setDashBg(c ? '' : ''); if(c){ localStorage.setItem('dash_bg_color', c) } else { localStorage.removeItem('dash_bg_color'); localStorage.removeItem('dash_bg') } }}
+                      className="w-8 h-8 rounded-lg border border-brand-border hover:border-brand-gold transition-colors flex items-center justify-center"
+                      style={{ backgroundColor: c || 'transparent' }}
+                      title={c || 'Reset'}>
+                      {!c && <span className="text-brand-muted text-xs">↩</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button onClick={() => setShowDashCustom(false)} className="w-full mt-5 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold rounded-lg py-2.5 text-sm transition-colors">Done</button>
+          </div>
+        </div>
+      )}
 
       {/* Task Detail Modal */}
       {selectedTask && (
@@ -971,7 +1061,7 @@ export default function Dashboard() {
       {/* Create Task Modal */}
       {showCreateTask && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setShowCreateTask(false)}>
-          <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-md">
+          <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-semibold text-white">New Task <span className="text-brand-muted text-xs font-normal ml-1">Press S to save</span></h3>
               <button onClick={() => setShowCreateTask(false)} className="text-brand-muted hover:text-white"><X size={18} /></button>
@@ -1010,24 +1100,51 @@ export default function Dashboard() {
                   </select>
                 </div>
               </div>
+
+              {/* Multi-assignee tags */}
               <div>
-                <label className="text-brand-muted text-xs mb-1 block">Assign To</label>
-                <select value={createForm.assigned_to} onChange={e => setCreateForm({...createForm, assigned_to: e.target.value})}
-                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
-                  <option value="">Assign to myself</option>
-                  {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                <label className="text-brand-muted text-xs mb-1.5 block">Assign To</label>
+                {createForm.assigned_users?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {createForm.assigned_users.map(uid => {
+                      const p = profiles.find(x => x.id === uid)
+                      return p ? (
+                        <span key={uid} className="flex items-center gap-1 bg-brand-gold/10 border border-brand-gold/30 text-brand-gold text-xs px-2 py-1 rounded-full">
+                          {p.full_name.split(' ')[0]}
+                          <button type="button" onClick={() => setCreateForm(f => ({ ...f, assigned_users: f.assigned_users.filter(id => id !== uid) }))}
+                            className="hover:text-white ml-0.5"><X size={10} /></button>
+                        </span>
+                      ) : null
+                    })}
+                  </div>
+                )}
+                <select onChange={e => {
+                  const val = e.target.value
+                  if (!val) return
+                  setCreateForm(f => ({ ...f, assigned_users: f.assigned_users?.includes(val) ? f.assigned_users : [...(f.assigned_users || []), val] }))
+                  e.target.value = ''
+                }} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                  <option value="">+ Add person...</option>
+                  {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === profile?.id ? ' (me)' : ''}</option>)}
                 </select>
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-brand-muted text-xs mb-1 block">Due Date</label>
-                  <input type="date" value={createForm.due_date} onChange={e => setCreateForm({...createForm, due_date: e.target.value})}
-                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                  <div className="relative">
+                    <input type="date" value={createForm.due_date} onChange={e => setCreateForm({...createForm, due_date: e.target.value})}
+                      onClick={e => e.currentTarget.showPicker?.()}
+                      className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold cursor-pointer" />
+                  </div>
                 </div>
                 <div>
                   <label className="text-brand-muted text-xs mb-1 block">Est. Hours</label>
-                  <input type="number" min="0.5" step="0.5" value={createForm.estimated_hours} onChange={e => setCreateForm({...createForm, estimated_hours: e.target.value})}
-                    placeholder="e.g. 2" className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                  <select value={createForm.estimated_hours} onChange={e => setCreateForm({...createForm, estimated_hours: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="">— select —</option>
+                    {[0.5,1,1.5,2,3,4,6,8,10,12].map(h => <option key={h} value={h}>{h}h</option>)}
+                  </select>
                 </div>
               </div>
               <div className="flex gap-3 pt-2">

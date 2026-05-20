@@ -84,7 +84,7 @@ export default function Tasks() {
   const [form, setForm] = useState({
     title: '', description: '', type: 'task',
     status: 'open', priority: 'medium',
-    assigned_to: '', due_date: '', estimated_hours: '', department_id: ''
+    assigned_users: [], due_date: '', estimated_hours: '', department_id: ''
   })
 
   useEffect(() => { fetchData() }, [])
@@ -140,17 +140,20 @@ export default function Tasks() {
 
   async function createTask(e) {
     e.preventDefault()
+    const assignees = form.assigned_users?.length ? form.assigned_users : [profile.id]
     const payload = {
-      ...form,
+      title: form.title, description: form.description, type: form.type,
+      status: form.status, priority: form.priority,
       created_by: profile.id,
-      assigned_to: form.assigned_to || profile.id,
+      assigned_to: assignees[0],
+      assigned_to_users: assignees,
       due_date: form.due_date || null,
       estimated_hours: form.estimated_hours || null,
       department_id: form.department_id || null,
     }
     await supabase.from('tasks').insert(payload)
     setShowModal(false)
-    setForm({ title: '', description: '', type: 'task', status: 'open', priority: 'medium', assigned_to: '', due_date: '', estimated_hours: '', department_id: '' })
+    setForm({ title: '', description: '', type: 'task', status: 'open', priority: 'medium', assigned_users: [], due_date: '', estimated_hours: '', department_id: '' })
     fetchData()
   }
 
@@ -240,20 +243,44 @@ export default function Tasks() {
                 </div>
               </div>
               <div>
-                <label className="text-brand-muted text-xs mb-1 block">Assign To</label>
-                <select value={form.assigned_to} onChange={e => setForm({...form, assigned_to: e.target.value})} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
-                  <option value="">Assign to myself</option>
-                  {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                <label className="text-brand-muted text-xs mb-1.5 block">Assign To</label>
+                {form.assigned_users?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {form.assigned_users.map(uid => {
+                      const p = profiles.find(x => x.id === uid)
+                      return p ? (
+                        <span key={uid} className="flex items-center gap-1 bg-brand-gold/10 border border-brand-gold/30 text-brand-gold text-xs px-2 py-1 rounded-full">
+                          {p.full_name.split(' ')[0]}
+                          <button type="button" onClick={() => setForm(f => ({ ...f, assigned_users: f.assigned_users.filter(id => id !== uid) }))}
+                            className="hover:text-white ml-0.5">&#x2715;</button>
+                        </span>
+                      ) : null
+                    })}
+                  </div>
+                )}
+                <select onChange={e => {
+                  const val = e.target.value
+                  if (!val) return
+                  setForm(f => ({ ...f, assigned_users: f.assigned_users?.includes(val) ? f.assigned_users : [...(f.assigned_users || []), val] }))
+                  e.target.value = ''
+                }} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                  <option value="">+ Add person...</option>
+                  {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === profile?.id ? ' (me)' : ''}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-brand-muted text-xs mb-1 block">Due Date</label>
-                  <input type="date" value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                  <input type="date" value={form.due_date} onChange={e => setForm({...form, due_date: e.target.value})}
+                    onClick={e => e.currentTarget.showPicker?.()}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold cursor-pointer" />
                 </div>
                 <div>
                   <label className="text-brand-muted text-xs mb-1 block">Est. Hours</label>
-                  <input type="number" min="0.5" step="0.5" value={form.estimated_hours} onChange={e => setForm({...form, estimated_hours: e.target.value})} placeholder="e.g. 2" className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                  <select value={form.estimated_hours} onChange={e => setForm({...form, estimated_hours: e.target.value})} className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="">— select —</option>
+                    {[0.5,1,1.5,2,3,4,6,8,10,12].map(h => <option key={h} value={h}>{h}h</option>)}
+                  </select>
                 </div>
               </div>
               {departments.length > 1 && (
