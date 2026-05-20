@@ -35,6 +35,7 @@ export default function RotaCalendar() {
   const [form, setForm] = useState({ start_date: '', end_date: '', type: 'annual', note: '' })
   const [saving, setSaving] = useState(false)
   const [pendingLeaves, setPendingLeaves] = useState([])
+  const [selectedLeave, setSelectedLeave] = useState(null)
 
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
@@ -190,7 +191,8 @@ export default function RotaCalendar() {
                       const member = profiles.find(p => p.id === l.user_id)
                       const lt = getLeaveType(l.type)
                       return (
-                        <div key={l.id} className={`flex items-center gap-1 text-[10px] rounded px-1 py-0.5 ${lt.bg}`}>
+                        <div key={l.id} onClick={() => setSelectedLeave({...l, member, lt})}
+                          className={`flex items-center gap-1 text-[10px] rounded px-1 py-0.5 cursor-pointer hover:opacity-80 transition-opacity ${lt.bg}`}>
                           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: member?.avatar_color || '#C9A84C' }} />
                           <span className={`truncate ${lt.color}`}>{member?.full_name?.split(' ')[0]}</span>
                         </div>
@@ -313,6 +315,68 @@ export default function RotaCalendar() {
           </div>
         </div>
       )}
+    
+      {/* Leave Detail Modal */}
+      {selectedLeave && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setSelectedLeave(null)}>
+          <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-semibold text-white">Leave Request</h3>
+              <button onClick={() => setSelectedLeave(null)} className="text-brand-muted hover:text-white"><X size={18} /></button>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 bg-brand-dark border border-brand-border rounded-lg p-3">
+                <Avatar profile={selectedLeave.member} />
+                <div>
+                  <p className="text-white text-sm font-medium">{selectedLeave.member?.full_name}</p>
+                  <p className={`text-xs ${selectedLeave.lt?.color}`}>{selectedLeave.lt?.label}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Start</p>
+                  <p className="text-white">{format(new Date(selectedLeave.start_date), 'MMM d, yyyy')}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">End</p>
+                  <p className="text-white">{format(new Date(selectedLeave.end_date), 'MMM d, yyyy')}</p>
+                </div>
+              </div>
+              {selectedLeave.note && (
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Note</p>
+                  <p className="text-white text-sm">{selectedLeave.note}</p>
+                </div>
+              )}
+              <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                <p className="text-brand-muted text-xs mb-1">Status</p>
+                <p className={`text-sm font-medium capitalize ${selectedLeave.status === 'approved' ? 'text-green-400' : selectedLeave.status === 'rejected' ? 'text-red-400' : 'text-yellow-400'}`}>{selectedLeave.status}</p>
+              </div>
+              <div className="flex gap-3 pt-1">
+                {profile?.role === 'admin' && (
+                  <button onClick={async () => {
+                    await supabase.from('leave_requests').delete().eq('id', selectedLeave.id)
+                    setSelectedLeave(null)
+                    fetchData()
+                  }} className="flex-1 border border-red-400/30 text-red-400 hover:bg-red-400/10 rounded-lg py-2.5 text-sm transition-colors">
+                    Delete
+                  </button>
+                )}
+                {profile?.role === 'admin' && selectedLeave.status === 'pending' && (
+                  <button onClick={async () => {
+                    await approveLeave(selectedLeave.id, true)
+                    setSelectedLeave(null)
+                  }} className="flex-1 bg-green-400/10 border border-green-400/30 text-green-400 hover:bg-green-400/20 rounded-lg py-2.5 text-sm transition-colors">
+                    Approve
+                  </button>
+                )}
+                <button onClick={() => setSelectedLeave(null)} className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }

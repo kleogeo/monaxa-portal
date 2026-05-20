@@ -27,21 +27,129 @@ const CASE_TYPE_LABELS = {
 }
 
 
-function SortableCaseRow({ c, updateStatus }) {
+function CaseDetailModal({ c, profiles, onClose, onUpdate }) {
+  const [form, setForm] = useState({ ...c })
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    await supabase.from('cases').update({
+      case_ref: form.case_ref,
+      account_id: form.account_id,
+      case_type: form.case_type,
+      priority: form.priority,
+      status: form.status,
+      assigned_to: form.assigned_to,
+      notes: form.notes,
+    }).eq('id', c.id)
+    setSaving(false)
+    onUpdate()
+    onClose()
+  }
+
+  async function deleteCase() {
+    if (!confirm('Delete this case?')) return
+    await supabase.from('cases').delete().eq('id', c.id)
+    onUpdate()
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-semibold text-white">{c.case_ref}</h3>
+            <p className="text-brand-muted text-xs mt-0.5">{format(new Date(c.created_at), 'MMM d, yyyy')}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={deleteCase} className="text-brand-muted hover:text-red-400 text-xs transition-colors">Delete</button>
+            <button onClick={onClose} className="text-brand-muted hover:text-white"><X size={18} /></button>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-brand-muted text-xs mb-1 block">Case Ref</label>
+              <input value={form.case_ref} onChange={e => setForm({...form, case_ref: e.target.value})}
+                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+            </div>
+            <div>
+              <label className="text-brand-muted text-xs mb-1 block">Account ID</label>
+              <input value={form.account_id || ''} onChange={e => setForm({...form, account_id: e.target.value})}
+                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-brand-muted text-xs mb-1 block">Type</label>
+              <select value={form.case_type} onChange={e => setForm({...form, case_type: e.target.value})}
+                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                {Object.entries(CASE_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-brand-muted text-xs mb-1 block">Priority</label>
+              <select value={form.priority} onChange={e => setForm({...form, priority: e.target.value})}
+                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-brand-muted text-xs mb-1 block">Status</label>
+              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})}
+                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="escalated">Escalated</option>
+                <option value="closed">Closed</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-brand-muted text-xs mb-1 block">Assigned To</label>
+              <select value={form.assigned_to || ''} onChange={e => setForm({...form, assigned_to: e.target.value})}
+                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-brand-muted text-xs mb-1 block">Notes</label>
+            <textarea value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} rows={4}
+              className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold resize-none" />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button onClick={onClose} className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Cancel</button>
+            <button onClick={save} disabled={saving} className="flex-1 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold rounded-lg py-2.5 text-sm transition-colors disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SortableCaseRow({ c, updateStatus, onClick }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: c.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   return (
-    <tr ref={setNodeRef} style={style} className="border-b border-brand-border last:border-0 hover:bg-white/5 transition-colors">
-      <td className="px-3 py-3">
+    <tr ref={setNodeRef} style={style} className="border-b border-brand-border last:border-0 hover:bg-white/5 transition-colors cursor-pointer">
+      <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
         <span {...attributes} {...listeners}
           className="text-brand-border hover:text-brand-muted cursor-grab active:cursor-grabbing touch-none flex justify-center">
           <GripVertical size={14} />
         </span>
       </td>
-      <td className="px-4 py-3 text-brand-gold text-sm font-medium">{c.case_ref}</td>
-      <td className="px-4 py-3 text-white text-sm">{c.account_id || '—'}</td>
-      <td className="px-4 py-3 text-brand-muted text-xs">{CASE_TYPE_LABELS[c.case_type]}</td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 text-brand-gold text-sm font-medium" onClick={onClick}>{c.case_ref}</td>
+      <td className="px-4 py-3 text-white text-sm" onClick={onClick}>{c.account_id || '—'}</td>
+      <td className="px-4 py-3 text-brand-muted text-xs" onClick={onClick}>{CASE_TYPE_LABELS[c.case_type]}</td>
+      <td className="px-4 py-3" onClick={onClick}>
         {c.assigned ? (
           <div className="flex items-center gap-1.5">
             <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-black" style={{ backgroundColor: c.assigned.avatar_color || '#C9A84C' }}>
@@ -51,10 +159,10 @@ function SortableCaseRow({ c, updateStatus }) {
           </div>
         ) : '—'}
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3" onClick={onClick}>
         <span className={`text-xs capitalize font-medium ${c.priority === 'urgent' ? 'text-red-400' : c.priority === 'high' ? 'text-orange-400' : c.priority === 'medium' ? 'text-blue-400' : 'text-brand-muted'}`}>{c.priority}</span>
       </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
         <select value={c.status} onChange={e => updateStatus(c.id, e.target.value)}
           className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-gold">
           <option value="open">Open</option>
@@ -63,7 +171,7 @@ function SortableCaseRow({ c, updateStatus }) {
           <option value="closed">Closed</option>
         </select>
       </td>
-      <td className="px-4 py-3 text-brand-muted text-xs">{format(new Date(c.created_at), 'MMM d')}</td>
+      <td className="px-4 py-3 text-brand-muted text-xs" onClick={onClick}>{format(new Date(c.created_at), 'MMM d')}</td>
     </tr>
   )
 }
@@ -75,6 +183,7 @@ export default function Cases() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [filter, setFilter] = useState('all')
+  const [selectedCase, setSelectedCase] = useState(null)
   const [form, setForm] = useState({
     case_ref: '', account_id: '', case_type: 'hedge_abuse',
     status: 'open', priority: 'medium', assigned_to: '', notes: ''
@@ -190,7 +299,7 @@ export default function Cases() {
           <tbody>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={filtered.map(c => c.id)} strategy={verticalListSortingStrategy}>
-                {filtered.map(c => <SortableCaseRow key={c.id} c={c} updateStatus={updateStatus} />)}
+                {filtered.map(c => <SortableCaseRow key={c.id} c={c} updateStatus={updateStatus} onClick={() => setSelectedCase(c)} />)}
               </SortableContext>
             </DndContext>
             {filtered.length === 0 && (
@@ -199,6 +308,8 @@ export default function Cases() {
           </tbody>
         </table>
       </div>
+
+      {selectedCase && <CaseDetailModal c={selectedCase} profiles={profiles} onClose={() => setSelectedCase(null)} onUpdate={fetchData} />}
 
       {/* Create Modal */}
       {showModal && (

@@ -28,11 +28,11 @@ const PRIORITY_DOT = {
 }
 
 
-function SortableTaskCard({ task, updateStatus }) {
+function SortableTaskCard({ task, updateStatus, onClick }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   return (
-    <div ref={setNodeRef} style={style} className="bg-brand-surface border border-brand-border rounded-xl p-4 flex items-start gap-4 hover:border-brand-gold/30 transition-colors">
+    <div ref={setNodeRef} style={style} onClick={onClick} className="bg-brand-surface border border-brand-border rounded-xl p-4 flex items-start gap-4 hover:border-brand-gold/30 transition-colors cursor-pointer">
       <span {...attributes} {...listeners} onClick={e => e.stopPropagation()}
         className="text-brand-border hover:text-brand-muted cursor-grab active:cursor-grabbing mt-1 flex-shrink-0 touch-none">
         <GripVertical size={14} />
@@ -53,7 +53,7 @@ function SortableTaskCard({ task, updateStatus }) {
                 <span className="text-brand-muted text-xs hidden sm:block">{task.assigned.full_name.split(' ')[0]}</span>
               </div>
             )}
-            <select value={task.status} onChange={e => updateStatus(task.id, e.target.value)}
+            <select value={task.status} onChange={e => { e.stopPropagation(); updateStatus(task.id, e.target.value) }} onClick={e => e.stopPropagation()}
               className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-gold">
               <option value="open">Open</option>
               <option value="in_progress">In Progress</option>
@@ -81,6 +81,7 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [filter, setFilter] = useState('all')
+  const [selectedTask, setSelectedTask] = useState(null)
   const [form, setForm] = useState({
     title: '', description: '', type: 'task',
     status: 'open', priority: 'medium',
@@ -198,13 +199,62 @@ export default function Tasks() {
       <div className="space-y-2">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={filtered.map(t => t.id)} strategy={verticalListSortingStrategy}>
-            {filtered.map(task => <SortableTaskCard key={task.id} task={task} updateStatus={updateStatus} />)}
+            {filtered.map(task => <SortableTaskCard key={task.id} task={task} updateStatus={updateStatus} onClick={() => setSelectedTask(task)} />)}
           </SortableContext>
         </DndContext>
         {filtered.length === 0 && <p className="text-brand-muted text-sm text-center py-12">No tasks found</p>}
       </div>
 
       {/* Create Modal */}
+      {/* Task Detail Modal */}
+      {selectedTask && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setSelectedTask(null)}>
+          <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-semibold text-white">{selectedTask.title}</h3>
+                <p className="text-brand-muted text-xs mt-0.5 capitalize">{selectedTask.type} · {selectedTask.priority} priority</p>
+              </div>
+              <button onClick={() => setSelectedTask(null)} className="text-brand-muted hover:text-white"><X size={18} /></button>
+            </div>
+            <div className="space-y-4">
+              {selectedTask.description && (
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Description</p>
+                  <p className="text-white text-sm">{selectedTask.description}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Status</p>
+                  <select value={selectedTask.status} onChange={async e => { await updateStatus(selectedTask.id, e.target.value); setSelectedTask({...selectedTask, status: e.target.value}) }}
+                    className="w-full bg-transparent text-white text-sm focus:outline-none">
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="review">Review</option>
+                    <option value="done">Done</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Due Date</p>
+                  <p className="text-white">{selectedTask.due_date ? format(new Date(selectedTask.due_date), 'MMM d, yyyy') : '—'}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Assigned To</p>
+                  <p className="text-white">{selectedTask.assigned?.full_name || '—'}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Est. Hours</p>
+                  <p className="text-white">{selectedTask.estimated_hours ? `${selectedTask.estimated_hours}h` : '—'}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedTask(null)} className="w-full border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-md">

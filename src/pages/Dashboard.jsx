@@ -686,6 +686,96 @@ function ActivityFeed({ profiles }) {
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────
+
+// ─── Mood Widget (Supabase-backed, shared across all users) ──────
+function MoodWidget({ profiles, currentProfile, supabase }) {
+  const [moods, setMoods] = useState({})
+  const [myEmoji, setMyEmoji] = useState('')
+  const [myText, setMyText] = useState('')
+  const [hoveredId, setHoveredId] = useState(null)
+  const saveTimeout = useRef(null)
+
+  useEffect(() => {
+    async function fetchMoods() {
+      const { data } = await supabase.from('team_moods').select('*')
+      if (data) {
+        const map = {}
+        data.forEach(m => { map[m.user_id] = m })
+        setMoods(map)
+        if (currentProfile && map[currentProfile.id]) {
+          setMyEmoji(map[currentProfile.id].emoji || '')
+          setMyText(map[currentProfile.id].status_text || '')
+        }
+      }
+    }
+    fetchMoods()
+  }, [currentProfile])
+
+  async function saveMood(emoji, text) {
+    if (!currentProfile) return
+    await supabase.from('team_moods').upsert({
+      user_id: currentProfile.id,
+      emoji,
+      status_text: text,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' })
+    setMoods(prev => ({ ...prev, [currentProfile.id]: { user_id: currentProfile.id, emoji, status_text: text } }))
+  }
+
+  function handleChange(emoji, text) {
+    setMyEmoji(emoji)
+    setMyText(text)
+    clearTimeout(saveTimeout.current)
+    saveTimeout.current = setTimeout(() => saveMood(emoji, text), 800)
+  }
+
+  return (
+    <div className="bg-brand-surface border border-brand-border rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <p className="text-brand-muted text-xs font-medium tracking-wider">TEAM MOOD</p>
+        <div className="flex items-center gap-2">
+          <input value={myEmoji} onChange={e => handleChange(e.target.value, myText)}
+            placeholder="😊" maxLength={2}
+            className="w-10 bg-brand-dark border border-brand-border rounded-lg px-1 py-1.5 text-center text-base focus:outline-none focus:border-brand-gold" />
+          <input value={myText} onChange={e => handleChange(myEmoji, e.target.value)}
+            placeholder="How are you feeling today?" maxLength={50}
+            className="bg-brand-dark border border-brand-border rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-brand-gold w-52" />
+        </div>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        {profiles.map(p => {
+          const m = moods[p.id]
+          const isMe = p.id === currentProfile?.id
+          const initials = p.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2)
+          return (
+            <div key={p.id}
+              onMouseEnter={() => setHoveredId(p.id)}
+              onMouseLeave={() => setHoveredId(null)}
+              className="relative flex items-center gap-2 bg-brand-dark border border-brand-border rounded-full px-3 py-1.5 transition-colors hover:border-brand-gold/40 cursor-default">
+              <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-black flex-shrink-0"
+                style={{ backgroundColor: p.avatar_color || '#C9A84C' }}>
+                {initials}
+              </div>
+              <span className="text-xs text-white font-medium">{p.full_name?.split(' ')[0]}</span>
+              {m?.emoji && <span className="text-sm">{m.emoji}</span>}
+              {/* Tooltip on hover */}
+              {hoveredId === p.id && m?.status_text && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-[#1a1a1a] border border-brand-border rounded-lg px-3 py-2 text-xs text-white whitespace-nowrap shadow-xl z-10">
+                  {m.emoji && <span className="mr-1">{m.emoji}</span>}{m.status_text}
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-brand-border" />
+                </div>
+              )}
+              {isMe && !m?.status_text && !m?.emoji && (
+                <span className="text-brand-muted text-[10px]">set status →</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { profile } = useAuth()
   const [tasks, setTasks] = useState([])
@@ -802,7 +892,10 @@ export default function Dashboard() {
       viewMode === 'mine' ? t.assigned_to === profile?.id :
       viewMode === 'recurring' ? ['daily','weekly','monthly'].includes(t.type) :
       viewMode === 'oneoff' ? (t.type === 'task' || t.type === 'case') :
-      viewMode === 'help' ? t.help_requested : true
+      viewMode === 'help' ? t.help_requested :
+      viewMode === 'urgent' ? t.priority === 'urgent' :
+      viewMode === 'overdue' ? (t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date))) :
+      true
 
     const matchesDept = activeDept === 'all' || t.department_id === activeDept
 
@@ -824,7 +917,7 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="space-y-5 max-w-5xl">
+    <div className="space-y-5 max-w-5xl" style={dashBg ? (dashBg.startsWith('#') ? { backgroundColor: dashBg } : { backgroundImage: `url(${dashBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }) : {}}>
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
@@ -835,9 +928,9 @@ export default function Dashboard() {
           <p className="text-brand-muted text-sm mt-0.5">{format(new Date(), 'EEEE, MMMM d, yyyy')}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {urgentCount > 0 && <div className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5"><AlertCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{urgentCount} urgent</span></div>}
-          {overdueCount > 0 && <div className="flex items-center gap-1.5 bg-orange-400/10 border border-orange-400/20 rounded-lg px-3 py-1.5"><Clock size={13} className="text-orange-400" /><span className="text-orange-400 text-xs font-medium">{overdueCount} overdue</span></div>}
-          {helpCount > 0 && <div className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5"><HelpCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{helpCount} need help</span></div>}
+          {urgentCount > 0 && <button onClick={() => setViewMode('urgent')} className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5 hover:bg-red-400/20 transition-colors"><AlertCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{urgentCount} urgent</span></button>}
+          {overdueCount > 0 && <button onClick={() => setViewMode('overdue')} className="flex items-center gap-1.5 bg-orange-400/10 border border-orange-400/20 rounded-lg px-3 py-1.5 hover:bg-orange-400/20 transition-colors"><Clock size={13} className="text-orange-400" /><span className="text-orange-400 text-xs font-medium">{overdueCount} overdue</span></button>}
+          {helpCount > 0 && <button onClick={() => setViewMode('help')} className="flex items-center gap-1.5 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-1.5 hover:bg-red-400/20 transition-colors"><HelpCircle size={13} className="text-red-400" /><span className="text-red-400 text-xs font-medium">{helpCount} need help</span></button>}
           <button onClick={() => setShowDashCustom(true)} title="Customise Dashboard" className="flex items-center gap-1.5 bg-brand-surface border border-brand-border hover:border-brand-gold text-brand-muted hover:text-brand-gold px-3 py-1.5 rounded-lg text-xs transition-colors">
             ✨ Customise
           </button>
@@ -972,34 +1065,7 @@ export default function Dashboard() {
 
       {/* Activity Feed */}
       {/* Mood Widget */}
-      <div className="bg-brand-surface border border-brand-border rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-brand-muted text-xs font-medium">TEAM MOOD</p>
-          <div className="flex items-center gap-2">
-            <input value={mood.emoji} onChange={e => { const m = {...mood, emoji: e.target.value}; setMood(m); localStorage.setItem('dash_mood', JSON.stringify(m)) }}
-              placeholder="😊" className="w-10 bg-brand-dark border border-brand-border rounded px-1 py-0.5 text-center text-sm focus:outline-none" maxLength={2} />
-            <input value={mood.text} onChange={e => { const m = {...mood, text: e.target.value}; setMood(m); localStorage.setItem('dash_mood', JSON.stringify(m)) }}
-              placeholder="How are you feeling?" className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-brand-gold w-48" maxLength={40} />
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {profiles.map(p => {
-            const isMe = p.id === profile?.id
-            return (
-              <div key={p.id} className="flex items-center gap-1.5 bg-brand-dark border border-brand-border rounded-full px-3 py-1.5">
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-black flex-shrink-0"
-                  style={{ backgroundColor: p.avatar_color || '#C9A84C' }}>
-                  {p.full_name?.split(' ').map(n => n[0]).join('').slice(0,2)}
-                </div>
-                <span className="text-xs text-white">{p.full_name?.split(' ')[0]}</span>
-                {isMe && mood.emoji && <span className="text-sm">{mood.emoji}</span>}
-                {isMe && mood.text && <span className="text-xs text-brand-muted">{mood.text}</span>}
-                {!isMe && <span className="text-brand-muted text-xs">...</span>}
-              </div>
-            )
-          })}
-        </div>
-      </div>
+      <MoodWidget profiles={profiles} currentProfile={profile} supabase={supabase} />
 
       <ActivityFeed profiles={profiles} />
 
@@ -1036,14 +1102,14 @@ export default function Dashboard() {
               <div>
                 <label className="text-brand-muted text-xs mb-2 block">QUICK BACKGROUND COLOURS</label>
                 <div className="flex gap-2 flex-wrap">
-                  {['#0a0a0a','#0d1117','#0f172a','#1a0a2e','#0a1628','#1a1a0a','#1a0a0a',''].map((c,i) => (
-                    <button key={i} onClick={() => { setDashBg(c ? '' : ''); if(c){ localStorage.setItem('dash_bg_color', c) } else { localStorage.removeItem('dash_bg_color'); localStorage.removeItem('dash_bg') } }}
-                      className="w-8 h-8 rounded-lg border border-brand-border hover:border-brand-gold transition-colors flex items-center justify-center"
-                      style={{ backgroundColor: c || 'transparent' }}
-                      title={c || 'Reset'}>
-                      {!c && <span className="text-brand-muted text-xs">↩</span>}
-                    </button>
+                  {['#0a0a0a','#0d1117','#0f172a','#1a0a2e','#0a1628','#1a1a0a','#1a0a0a'].map((c,i) => (
+                    <button key={i} onClick={() => { setDashBg(c); localStorage.setItem('dash_bg', c) }}
+                      className={`w-8 h-8 rounded-lg border hover:border-brand-gold transition-colors ${dashBg === c ? 'border-brand-gold' : 'border-brand-border'}`}
+                      style={{ backgroundColor: c }} title={c} />
                   ))}
+                  <button onClick={() => { setDashBg(''); localStorage.removeItem('dash_bg') }}
+                    className="w-8 h-8 rounded-lg border border-brand-border hover:border-brand-gold transition-colors flex items-center justify-center text-brand-muted hover:text-white text-xs"
+                    title="Reset">↩</button>
                 </div>
               </div>
             </div>
