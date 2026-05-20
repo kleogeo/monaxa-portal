@@ -32,7 +32,7 @@ export default function RotaCalendar() {
   const [leaves, setLeaves] = useState([])
   const [view, setView] = useState('month') // month | team
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ start_date: '', end_date: '', type: 'annual', note: '' })
+  const [form, setForm] = useState({ start_date: '', end_date: '', type: 'annual', note: '', for_user_id: null })
   const [saving, setSaving] = useState(false)
   const [pendingLeaves, setPendingLeaves] = useState([])
   const [selectedLeave, setSelectedLeave] = useState(null)
@@ -69,10 +69,15 @@ export default function RotaCalendar() {
   async function submitLeave(e) {
     e.preventDefault()
     setSaving(true)
+    const targetUser = form.for_user_id || profile.id
+    const isAdminForOther = profile?.role === 'admin' && form.for_user_id && form.for_user_id !== profile.id
     await supabase.from('leave_requests').insert({
-      ...form,
-      user_id: profile.id,
-      status: 'pending',
+      start_date: form.start_date,
+      end_date: form.end_date,
+      type: form.type,
+      note: form.note,
+      user_id: targetUser,
+      status: isAdminForOther ? 'approved' : 'pending',
     })
     setSaving(false)
     setShowModal(false)
@@ -243,14 +248,23 @@ export default function RotaCalendar() {
                       })
                       const lt = dayLeave ? getLeaveType(dayLeave.type) : null
                       const isWeekend = [0, 6].includes(day.getDay())
+                      const dateStr = format(day, 'yyyy-MM-dd')
                       return (
-                        <td key={day.toISOString()} className={`text-center px-0.5 py-2 ${isWeekend ? 'bg-white/5' : ''}`}>
+                        <td key={day.toISOString()}
+                          onClick={() => {
+                            if (lt) { setSelectedLeave({...dayLeave, member, lt}) }
+                            else {
+                              setForm({ start_date: dateStr, end_date: dateStr, type: 'annual', note: '', for_user_id: member.id })
+                              setShowModal(true)
+                            }
+                          }}
+                          className={`text-center px-0.5 py-2 cursor-pointer ${isWeekend ? 'bg-white/5' : ''} hover:bg-white/10 transition-colors`}>
                           {lt ? (
                             <div className={`w-5 h-5 rounded flex items-center justify-center mx-auto ${lt.bg}`}>
                               <lt.icon size={10} className={lt.color} />
                             </div>
                           ) : (
-                            <div className={`w-5 h-5 rounded mx-auto ${isToday(day) ? 'bg-brand-gold/20' : ''}`} />
+                            <div className={`w-5 h-5 rounded mx-auto ${isToday(day) ? 'bg-brand-gold/20 border border-brand-gold/40' : 'hover:bg-brand-gold/10 border border-transparent hover:border-brand-gold/20'}`} />
                           )}
                         </td>
                       )
@@ -269,8 +283,17 @@ export default function RotaCalendar() {
           onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div className="bg-brand-surface border border-brand-border rounded-2xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-white font-semibold">Request Leave</h3>
-              <button onClick={() => setShowModal(false)} className="text-brand-muted hover:text-white"><X size={18} /></button>
+              <div>
+                <h3 className="text-white font-semibold">
+                  {form.for_user_id && form.for_user_id !== profile?.id
+                    ? `Add Leave — ${profiles.find(p => p.id === form.for_user_id)?.full_name?.split(' ')[0] || 'Member'}`
+                    : 'Request Leave'}
+                </h3>
+                {form.for_user_id && form.for_user_id !== profile?.id && profile?.role === 'admin' && (
+                  <p className="text-brand-gold text-xs mt-0.5">Auto-approved as admin</p>
+                )}
+              </div>
+              <button onClick={() => { setShowModal(false); setForm({ start_date: '', end_date: '', type: 'annual', note: '', for_user_id: null }) }} className="text-brand-muted hover:text-white"><X size={18} /></button>
             </div>
             <form onSubmit={submitLeave} className="space-y-4">
               <div>

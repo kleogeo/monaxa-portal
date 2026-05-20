@@ -631,13 +631,18 @@ function SortableTaskRow({ task, profiles, index, onClick, isPinned }) {
 // ─── Activity Feed ────────────────────────────────────────────────
 function ActivityFeed({ profiles }) {
   const [events, setEvents] = useState([])
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
+  const [filter, setFilter] = useState('today')
 
   useEffect(() => {
     if (!open) return
-    supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(20)
-      .then(({ data }) => setEvents(data || []))
-  }, [open])
+    const query = supabase.from('activity_log').select('*').order('created_at', { ascending: false }).limit(50)
+    if (filter === 'today') {
+      const todayStart = new Date(); todayStart.setHours(0,0,0,0)
+      query.gte('created_at', todayStart.toISOString())
+    }
+    query.then(({ data }) => setEvents(data || []))
+  }, [open, filter])
 
   const ACTION_LABELS = {
     status_done: '✅ completed',
@@ -651,17 +656,26 @@ function ActivityFeed({ profiles }) {
 
   return (
     <div className="bg-brand-surface border border-brand-border rounded-xl overflow-hidden">
-      <button onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors">
+      <div className="flex items-center justify-between px-4 py-3.5 border-b border-brand-border">
         <div className="flex items-center gap-3">
           <Activity size={15} className="text-cyan-400" />
           <h2 className="text-white font-semibold text-sm">Activity Feed</h2>
         </div>
-        {open ? <ChevronUp size={14} className="text-brand-muted" /> : <ChevronDown size={14} className="text-brand-muted" />}
-      </button>
+        <div className="flex items-center gap-2">
+          {['today','all'].map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`text-xs px-2.5 py-1 rounded-md transition-colors capitalize ${filter === f ? 'bg-brand-gold text-black font-medium' : 'text-brand-muted hover:text-white'}`}>
+              {f === 'today' ? 'Today' : 'All'}
+            </button>
+          ))}
+          <button onClick={() => setOpen(!open)} className="text-brand-muted hover:text-white ml-1">
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
+      </div>
       {open && (
-        <div className="border-t border-brand-border">
-          {events.length === 0 ? <p className="text-center py-6 text-brand-muted text-sm">No activity yet</p> : (
+        <div>
+          {events.length === 0 ? <p className="text-center py-6 text-brand-muted text-sm">{filter === 'today' ? 'No activity today yet' : 'No activity yet'}</p> : (
             events.map(e => {
               const actor = profiles.find(p => p.id === e.user_id)
               return (
