@@ -45,7 +45,7 @@ export default function RotaCalendar() {
   const fetchData = useCallback(async () => {
     const [profilesRes, leavesRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('is_active', true),
-      supabase.from('leave_requests').select('*').gte('start_date', format(monthStart, 'yyyy-MM-dd')).lte('end_date', format(monthEnd, 'yyyy-MM-dd')),
+      supabase.from('leave_requests').select('*').lte('start_date', format(monthEnd, 'yyyy-MM-dd')).gte('end_date', format(monthStart, 'yyyy-MM-dd')),
     ])
     setProfiles(profilesRes.data || [])
     setLeaves(leavesRes.data || [])
@@ -93,7 +93,7 @@ export default function RotaCalendar() {
   const getLeaveType = (type) => LEAVE_TYPES.find(t => t.value === type) || LEAVE_TYPES[3]
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

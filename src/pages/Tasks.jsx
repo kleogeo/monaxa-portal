@@ -88,7 +88,14 @@ export default function Tasks() {
     assigned_users: [], due_date: '', estimated_hours: '', department_id: ''
   })
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => {
+    fetchData()
+    const channel = supabase
+      .channel('tasks-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
 
   // Keyboard shortcuts: N=new task, Escape=close, S=save
   const formRef = useRef(null)
@@ -163,7 +170,9 @@ export default function Tasks() {
     fetchData()
   }
 
-  const filtered = filter === 'all' ? tasks
+  const RECURRING = ['daily', 'weekly', 'monthly']
+  const filtered = filter === 'all'
+    ? tasks.filter(t => !((t.status === 'done' || t.status === 'cancelled') && RECURRING.includes(t.type)))
     : filter === 'mine' ? tasks.filter(t => t.assigned_to === profile?.id || t.assigned_to_users?.includes(profile?.id))
     : tasks.filter(t => t.status === filter)
   const canDrag = filter === 'all'

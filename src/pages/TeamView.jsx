@@ -16,12 +16,20 @@ export default function TeamView() {
   const [cases, setCases] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => {
+    fetchData()
+    const channel = supabase
+      .channel('team-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, fetchData)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
 
   async function fetchData() {
     const [profilesRes, tasksRes, casesRes] = await Promise.all([
       supabase.from('profiles').select('*').eq('is_active', true),
-      supabase.from('tasks').select('*').neq('status', 'done'),
+      supabase.from('tasks').select('*').not('status', 'in', '("done","cancelled")'),
       supabase.from('cases').select('*').neq('status', 'closed'),
     ])
     setProfiles(profilesRes.data || [])
@@ -46,7 +54,10 @@ export default function TeamView() {
       {/* Team grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {profiles.map(member => {
-          const memberTasks = tasks.filter(t => t.assigned_to === member.id)
+          const memberTasks = tasks.filter(t =>
+            t.assigned_to === member.id ||
+            (Array.isArray(t.assigned_to_users) && t.assigned_to_users.includes(member.id))
+          )
           const memberCases = cases.filter(c => c.assigned_to === member.id)
           const initials = member.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 

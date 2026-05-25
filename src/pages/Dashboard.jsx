@@ -827,6 +827,15 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  // Realtime: auto-refresh when tasks change for any connected user
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [fetchData])
+
   // Keyboard shortcuts: N=new task, /=search, Escape=close
   useEffect(() => {
     const handler = (e) => {
@@ -935,7 +944,7 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="space-y-5 max-w-5xl" style={dashBg ? (dashBg.startsWith('#') ? { backgroundColor: dashBg } : { backgroundImage: `url(${dashBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }) : {}}>
+    <div className="space-y-5" style={dashBg ? (dashBg.startsWith('#') ? { backgroundColor: dashBg } : { backgroundImage: `url(${dashBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }) : {}}>
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>

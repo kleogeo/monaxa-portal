@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { X, Edit3, Check, Shield, Users, Building2, ExternalLink } from 'lucide-react'
+import { X, Edit3, Check, Shield, Users, Building2, ExternalLink, Plus, Trash2 } from 'lucide-react'
 
 const AVATAR_COLORS = ['#C9A84C', '#4C9AC9', '#C94C4C', '#4CC94C', '#9A4CC9', '#C9894C', '#4CC9C9', '#C94CA8']
 
@@ -26,6 +26,9 @@ export default function Admin() {
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState('team') // team | departments
+  const [showNewDept, setShowNewDept] = useState(false)
+  const [newDeptForm, setNewDeptForm] = useState({ name: '', color: '#C9A84C', description: '' })
+  const [savingDept, setSavingDept] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -83,6 +86,23 @@ export default function Admin() {
     fetchAll()
   }
 
+  async function createDept(e) {
+    e.preventDefault()
+    if (!newDeptForm.name.trim()) return
+    setSavingDept(true)
+    await supabase.from('departments').insert({ name: newDeptForm.name.trim(), color: newDeptForm.color, description: newDeptForm.description, is_active: true })
+    setSavingDept(false)
+    setShowNewDept(false)
+    setNewDeptForm({ name: '', color: '#C9A84C', description: '' })
+    fetchAll()
+  }
+
+  async function deleteDept(id) {
+    if (!confirm('Delete this department? This will remove it from all team members.')) return
+    await supabase.from('departments').delete().eq('id', id)
+    fetchAll()
+  }
+
   if (profile?.role !== 'admin') return (
     <div className="flex items-center justify-center h-64">
       <p className="text-brand-muted">Admin access only.</p>
@@ -92,7 +112,7 @@ export default function Admin() {
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" /></div>
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Admin</h1>
         <p className="text-brand-muted text-sm mt-0.5">Manage team members, roles, and departments</p>
@@ -234,9 +254,42 @@ export default function Admin() {
       {/* ── DEPARTMENTS TAB ── */}
       {tab === 'departments' && (
         <div className="space-y-3">
-          <p className="text-brand-muted text-sm">Manage departments and their colours. Click a department to edit it.</p>
+          <div className="flex items-center justify-between">
+            <p className="text-brand-muted text-sm">Manage departments and their colours.</p>
+            <button onClick={() => setShowNewDept(v => !v)}
+              className="flex items-center gap-1.5 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold px-3 py-2 rounded-lg text-sm transition-colors">
+              <Plus size={14} /> New Department
+            </button>
+          </div>
+
+          {showNewDept && (
+            <form onSubmit={createDept} className="bg-brand-dark border border-brand-border rounded-xl p-4 space-y-3">
+              <p className="text-white text-sm font-semibold">New Department</p>
+              <div className="grid grid-cols-2 gap-3">
+                <input value={newDeptForm.name} onChange={e => setNewDeptForm({...newDeptForm, name: e.target.value})} required
+                  placeholder="Department name" className="bg-brand-surface border border-brand-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                <input value={newDeptForm.description} onChange={e => setNewDeptForm({...newDeptForm, description: e.target.value})}
+                  placeholder="Description (optional)" className="bg-brand-surface border border-brand-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-brand-gold" />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-brand-muted">Colour</label>
+                <input type="color" value={newDeptForm.color} onChange={e => setNewDeptForm({...newDeptForm, color: e.target.value})}
+                  className="w-10 h-8 rounded cursor-pointer bg-transparent border-0" />
+                <div className="w-5 h-5 rounded-full" style={{ backgroundColor: newDeptForm.color }} />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShowNewDept(false)}
+                  className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2 text-sm transition-colors">Cancel</button>
+                <button type="submit" disabled={savingDept}
+                  className="flex-1 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold rounded-lg py-2 text-sm transition-colors disabled:opacity-50">
+                  {savingDept ? 'Creating...' : 'Create Department'}
+                </button>
+              </div>
+            </form>
+          )}
+
           {departments.map(dept => (
-            <DeptEditor key={dept.id} dept={dept} onSave={saveDept} />
+            <DeptEditor key={dept.id} dept={dept} onSave={saveDept} onDelete={deleteDept} />
           ))}
         </div>
       )}
@@ -244,7 +297,7 @@ export default function Admin() {
   )
 }
 
-function DeptEditor({ dept, onSave }) {
+function DeptEditor({ dept, onSave, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ name: dept.name, color: dept.color, description: dept.description || '' })
   const [saving, setSaving] = useState(false)
@@ -293,9 +346,14 @@ function DeptEditor({ dept, onSave }) {
               </button>
             </>
           ) : (
-            <button onClick={() => setEditing(true)} className="p-2 text-brand-muted hover:text-brand-gold rounded-lg border border-brand-border hover:border-brand-gold/30 transition-colors">
-              <Edit3 size={13} />
-            </button>
+            <>
+              <button onClick={() => setEditing(true)} className="p-2 text-brand-muted hover:text-brand-gold rounded-lg border border-brand-border hover:border-brand-gold/30 transition-colors">
+                <Edit3 size={13} />
+              </button>
+              <button onClick={() => onDelete(dept.id)} className="p-2 text-brand-muted hover:text-red-400 rounded-lg border border-brand-border hover:border-red-400/30 transition-colors">
+                <Trash2 size={13} />
+              </button>
+            </>
           )}
         </div>
       </div>

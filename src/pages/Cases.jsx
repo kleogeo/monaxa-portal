@@ -189,7 +189,14 @@ export default function Cases() {
     status: 'open', priority: 'medium', assigned_to: '', notes: ''
   })
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => {
+    fetchData()
+    const channel = supabase
+      .channel('cases-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, fetchData)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
 
   async function fetchData() {
     const [casesRes, profilesRes] = await Promise.all([
@@ -226,8 +233,8 @@ export default function Cases() {
 
   async function generateRef() {
     const date = format(new Date(), 'yyyyMMdd')
-    const count = cases.length + 1
-    return `CASE-${date}-${String(count).padStart(3, '0')}`
+    const { count } = await supabase.from('cases').select('*', { count: 'exact', head: true })
+    return `CASE-${date}-${String((count || 0) + 1).padStart(3, '0')}`
   }
 
   async function createCase(e) {

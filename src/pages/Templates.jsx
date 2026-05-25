@@ -98,7 +98,7 @@ export default function Templates() {
   const categories = [...new Set(RESPONSE_TEMPLATES.map(t => t.category))]
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-bold text-white">Templates</h1>
         <p className="text-brand-muted text-sm mt-0.5">Recurring task schedules and response templates</p>

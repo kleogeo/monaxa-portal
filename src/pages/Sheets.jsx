@@ -77,7 +77,7 @@ export default function Sheets() {
   }
 
   return (
-    <div className="space-y-5 max-w-6xl">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold text-white">Google Sheets</h1>
@@ -156,6 +156,9 @@ export default function Sheets() {
                   frameBorder="0"
                   title={activeSheet.name}
                 />
+                <div className="px-4 py-2 border-t border-brand-border bg-brand-dark">
+                  <p className="text-brand-muted text-xs">If the sheet appears blank: in Google Sheets go to <span className="text-white">File → Share → Publish to web</span> and publish as HTML.</p>
+                </div>
               </>
             ) : (
               <div className="flex items-center justify-center h-64">

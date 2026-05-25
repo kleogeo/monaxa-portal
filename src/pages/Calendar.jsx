@@ -24,7 +24,14 @@ export default function Calendar() {
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd })
   const startPad = Array(monthStart.getDay()).fill(null)
 
-  useEffect(() => { fetchData() }, [currentDate])
+  useEffect(() => {
+    fetchData()
+    const channel = supabase
+      .channel('calendar-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [currentDate])
 
   async function fetchData() {
     const start = format(monthStart, 'yyyy-MM-dd')

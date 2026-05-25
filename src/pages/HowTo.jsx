@@ -77,7 +77,7 @@ function Badge({ color, label }) {
 
 export default function HowTo() {
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
@@ -138,10 +138,12 @@ export default function HowTo() {
           <div className="flex gap-2 flex-wrap">
             <Badge color="gold" label="All" />
             <Badge color="blue" label="Mine" />
-            <Badge color="muted" label="Recurring" />
-            <Badge color="muted" label="One-off" />
+            <Badge color="blue" label="Open" />
+            <Badge color="yellow" label="In Progress" />
+            <Badge color="purple" label="Review" />
+            <Badge color="green" label="Done" />
           </div>
-          <p className="text-brand-muted text-xs mt-1">Use the <span className="text-white">Mine</span> tab to see only tasks assigned to you. Use <span className="text-white">Recurring</span> for daily/weekly/monthly tasks.</p>
+          <p className="text-brand-muted text-xs mt-1">Use <span className="text-white">Mine</span> to see only your tasks. Use <span className="text-white">Done</span> to view completed task history.</p>
         </div>
         <div className="bg-green-400/5 border border-green-400/20 rounded-lg p-4">
           <p className="text-green-400 text-sm font-medium mb-1 flex items-center gap-2"><CheckCircle2 size={13} /> Recently Finished</p>
