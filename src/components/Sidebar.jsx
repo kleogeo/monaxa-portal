@@ -19,10 +19,12 @@ function NotificationBell({ userId }) {
   useEffect(() => {
     if (!userId) return
     load()
-    const ch = supabase.channel('notif-' + userId)
+    // Use unique channel name per mount to avoid "cannot add after subscribe" error
+    const channelName = 'notif-' + userId + '-' + Date.now()
+    const ch = supabase.channel(channelName)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, load)
       .subscribe()
-    return () => supabase.removeChannel(ch)
+    return () => { supabase.removeChannel(ch) }
   }, [userId])
 
   // Close on outside click
