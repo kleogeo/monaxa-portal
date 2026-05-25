@@ -163,7 +163,10 @@ export default function Tasks() {
     fetchData()
   }
 
-  const filtered = filter === 'all' ? tasks : filter === 'mine' ? tasks.filter(t => t.assigned_to === profile?.id) : tasks.filter(t => t.status === filter)
+  const filtered = filter === 'all' ? tasks
+    : filter === 'mine' ? tasks.filter(t => t.assigned_to === profile?.id || t.assigned_to_users?.includes(profile?.id))
+    : tasks.filter(t => t.status === filter)
+  const canDrag = filter === 'all'
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="w-6 h-6 border-2 border-brand-gold border-t-transparent rounded-full animate-spin" /></div>
 
@@ -197,12 +200,43 @@ export default function Tasks() {
 
       {/* Task list */}
       <div className="space-y-2">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={filtered.map(t => t.id)} strategy={verticalListSortingStrategy}>
-            {filtered.map(task => <SortableTaskCard key={task.id} task={task} updateStatus={updateStatus} onClick={() => setSelectedTask(task)} />)}
-          </SortableContext>
-        </DndContext>
-        {filtered.length === 0 && <p className="text-brand-muted text-sm text-center py-12">No tasks found</p>}
+        {filtered.length === 0
+          ? <p className="text-brand-muted text-sm text-center py-12">No tasks found</p>
+          : canDrag
+          ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={filtered.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                {filtered.map(task => <SortableTaskCard key={task.id} task={task} updateStatus={updateStatus} onClick={() => setSelectedTask(task)} />)}
+              </SortableContext>
+            </DndContext>
+          )
+          : filtered.map(task => (
+            <div key={task.id} onClick={() => setSelectedTask(task)}
+              className="bg-brand-surface border border-brand-border rounded-xl p-4 flex items-start gap-4 hover:border-brand-gold/30 transition-colors cursor-pointer">
+              <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${PRIORITY_DOT[task.priority]}`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <p className="text-white text-sm font-medium">{task.title}</p>
+                    {task.description && <p className="text-brand-muted text-xs mt-0.5 line-clamp-1">{task.description}</p>}
+                  </div>
+                  <select value={task.status} onChange={e => { e.stopPropagation(); updateStatus(task.id, e.target.value) }} onClick={e => e.stopPropagation()}
+                    className="bg-brand-dark border border-brand-border rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-brand-gold">
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="review">Review</option>
+                    <option value="done">Done</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-3 mt-2">
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[task.status]}`}>{task.status.replace('_', ' ')}</span>
+                  <span className="text-brand-muted text-xs capitalize">{task.type}</span>
+                </div>
+              </div>
+            </div>
+          ))
+        }
       </div>
 
       {/* Create Modal */}

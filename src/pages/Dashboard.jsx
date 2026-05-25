@@ -262,7 +262,7 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div
-        className={`bg-brand-surface border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl transition-colors ${dragOver ? 'border-brand-gold border-2 bg-brand-gold/5' : 'border-brand-border'}`}
+        className={`relative bg-brand-surface border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl transition-colors ${dragOver ? 'border-brand-gold border-2 bg-brand-gold/5' : 'border-brand-border'}`}
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false) }}
         onDrop={e => {
@@ -629,7 +629,7 @@ function SortableTaskRow({ task, profiles, index, onClick, isPinned }) {
 }
 
 // ─── Activity Feed ────────────────────────────────────────────────
-function ActivityFeed({ profiles }) {
+function ActivityFeed({ profiles, refreshKey }) {
   const [events, setEvents] = useState([])
   const [open, setOpen] = useState(true)
   const [filter, setFilter] = useState('today')
@@ -642,7 +642,7 @@ function ActivityFeed({ profiles }) {
       query.gte('created_at', todayStart.toISOString())
     }
     query.then(({ data }) => setEvents(data || []))
-  }, [open, filter])
+  }, [open, filter, refreshKey])
 
   const ACTION_LABELS = {
     status_done: '✅ completed',
@@ -804,6 +804,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState('')
   const [showCreateTask, setShowCreateTask] = useState(false)
   const [createForm, setCreateForm] = useState({ title: '', description: '', type: 'task', priority: 'medium', due_date: '', estimated_hours: '', assigned_users: [] })
+  const [activityKey, setActivityKey] = useState(0)
   const [dashBg, setDashBg] = useState(() => localStorage.getItem('dash_bg') || '')
   const [showDashCustom, setShowDashCustom] = useState(false)
   const [mood, setMood] = useState(() => { try { return JSON.parse(localStorage.getItem('dash_mood') || '{"emoji":"","text":""}') } catch { return {emoji:'',text:''} } })
@@ -821,6 +822,7 @@ export default function Dashboard() {
     setProfiles(profilesRes.data || [])
     setDepartments(deptsRes.data || [])
     setLoading(false)
+    setActivityKey(k => k + 1)
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -833,9 +835,9 @@ export default function Dashboard() {
       if (e.key === '/' && !inInput) { e.preventDefault(); searchRef.current?.focus() }
       if (e.key === 'n' && !inInput) { e.preventDefault(); setShowCreateTask(true) }
       if (e.key === 'Escape') {
+        if (selectedTask) { setSelectedTask(null); return }
+        if (showCreateTask) { setShowCreateTask(false); return }
         setSearch('')
-        setShowCreateTask(false)
-        setSelectedTask(null)
       }
     }
     window.addEventListener('keydown', handler)
@@ -903,7 +905,7 @@ export default function Dashboard() {
 
   const filteredTasks = sortTasks(tasks.filter(t => {
     const matchesView = viewMode === 'all' ? true :
-      viewMode === 'mine' ? t.assigned_to === profile?.id :
+      viewMode === 'mine' ? (t.assigned_to === profile?.id || t.assigned_to_users?.includes(profile?.id)) :
       viewMode === 'recurring' ? ['daily','weekly','monthly'].includes(t.type) :
       viewMode === 'oneoff' ? (t.type === 'task' || t.type === 'case') :
       viewMode === 'help' ? t.help_requested :
@@ -919,10 +921,12 @@ export default function Dashboard() {
     return matchesView && matchesDept && matchesSearch
   }))
 
+  const canDrag = viewMode === 'all' && activeDept === 'all' && !search
+
   const urgentCount = tasks.filter(t => t.priority === 'urgent').length
   const overdueCount = tasks.filter(t => t.due_date && isPast(new Date(t.due_date)) && !isToday(new Date(t.due_date))).length
   const helpCount = tasks.filter(t => t.help_requested).length
-  const myCount = tasks.filter(t => t.assigned_to === profile?.id).length
+  const myCount = tasks.filter(t => t.assigned_to === profile?.id || t.assigned_to_users?.includes(profile?.id)).length
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -1017,7 +1021,8 @@ export default function Dashboard() {
 
         {filteredTasks.length === 0
           ? <div className="text-center py-10 text-brand-muted text-sm">{search ? `No results for "${search}"` : 'No active tasks'}</div>
-          : (
+          : canDrag
+          ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={filteredTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
                 {filteredTasks.map((task, i) => (
@@ -1026,6 +1031,9 @@ export default function Dashboard() {
               </SortableContext>
             </DndContext>
           )
+          : filteredTasks.map((task, i) => (
+            <TaskRow key={task.id} task={task} profiles={profiles} index={i} onClick={setSelectedTask} isPinned={task.is_pinned} dragHandle={null} />
+          ))
         }
       </div>
 
@@ -1081,7 +1089,7 @@ export default function Dashboard() {
       {/* Mood Widget */}
       <MoodWidget profiles={profiles} currentProfile={profile} supabase={supabase} />
 
-      <ActivityFeed profiles={profiles} />
+      <ActivityFeed profiles={profiles} refreshKey={activityKey} />
 
       {/* Customise Dashboard Modal */}
       {showDashCustom && (

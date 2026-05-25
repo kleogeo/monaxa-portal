@@ -41,6 +41,7 @@ function AppRoutes() {
       <Route path="/sheets" element={<ProtectedRoute><Layout><Sheets /></Layout></ProtectedRoute>} />
       <Route path="/howto" element={<ProtectedRoute><Layout><HowTo /></Layout></ProtectedRoute>} />
       <Route path="/rota" element={<ProtectedRoute><Layout><RotaCalendar /></Layout></ProtectedRoute>} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )
 }
