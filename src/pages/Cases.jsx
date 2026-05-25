@@ -243,7 +243,7 @@ export default function Cases() {
   useEffect(() => {
     fetchData()
     const channel = supabase
-      .channel('cases-realtime')
+      .channel('cases-rt-' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, fetchData)
       .subscribe()
     return () => supabase.removeChannel(channel)

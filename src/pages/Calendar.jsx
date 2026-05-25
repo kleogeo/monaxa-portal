@@ -27,7 +27,7 @@ export default function Calendar() {
   useEffect(() => {
     fetchData()
     const channel = supabase
-      .channel('calendar-realtime')
+      .channel('calendar-rt-' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
       .subscribe()
     return () => supabase.removeChannel(channel)

@@ -19,7 +19,7 @@ export default function TeamView() {
   useEffect(() => {
     fetchData()
     const channel = supabase
-      .channel('team-realtime')
+      .channel('team-rt-' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cases' }, fetchData)
       .subscribe()

@@ -246,7 +246,7 @@ export default function Tasks() {
   useEffect(() => {
     fetchData()
     const channel = supabase
-      .channel('tasks-realtime')
+      .channel('tasks-rt-' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
       .subscribe()
     return () => supabase.removeChannel(channel)

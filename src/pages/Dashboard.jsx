@@ -832,7 +832,7 @@ export default function Dashboard() {
   // Realtime: auto-refresh when tasks change for any connected user
   useEffect(() => {
     const channel = supabase
-      .channel('dashboard-realtime')
+      .channel('dashboard-rt-' + Math.random())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, fetchData)
       .subscribe()
     return () => supabase.removeChannel(channel)
