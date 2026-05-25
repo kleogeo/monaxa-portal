@@ -1,13 +1,123 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { formatDistanceToNow } from 'date-fns'
 import {
   LayoutDashboard, Users, CheckSquare, FolderOpen,
   Calendar, Settings, LogOut, Calculator, FileText,
   Table2, ChevronDown, ChevronRight, Wrench, BookOpen,
-  CalendarDays, Menu, X, KeyRound, Eye, EyeOff, Check
+  CalendarDays, Menu, X, KeyRound, Eye, EyeOff, Check,
+  Bell
 } from 'lucide-react'
+
+function NotificationBell({ userId }) {
+  const [notifications, setNotifications] = useState([])
+  const [open, setOpen] = useState(false)
+  const panelRef = useRef(null)
+
+  useEffect(() => {
+    if (!userId) return
+    load()
+    const ch = supabase.channel('notif-' + userId)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, load)
+      .subscribe()
+    return () => supabase.removeChannel(ch)
+  }, [userId])
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    function handler(e) {
+      if (panelRef.current && !panelRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  async function load() {
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setNotifications(data || [])
+  }
+
+  async function markRead(id) {
+    await supabase.from('notifications').update({ read: true }).eq('id', id)
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  }
+
+  async function markAllRead() {
+    const ids = notifications.filter(n => !n.read).map(n => n.id)
+    if (!ids.length) return
+    await supabase.from('notifications').update({ read: true }).in('id', ids)
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+  }
+
+  const unread = notifications.filter(n => !n.read).length
+
+  const TYPE_ICONS = {
+    task_assigned: '📋',
+    case_escalated: '🔺',
+    leave_submitted: '📅',
+    leave_approved: '✅',
+    leave_rejected: '❌',
+  }
+
+  return (
+    <div className="relative" ref={panelRef}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="relative p-1.5 text-brand-muted hover:text-white transition-colors rounded-lg hover:bg-white/5"
+        title="Notifications"
+      >
+        <Bell size={16} />
+        {unread > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5">
+            {unread > 9 ? '9+' : unread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-9 w-72 bg-brand-surface border border-brand-border rounded-xl shadow-2xl z-[60] overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-brand-border">
+            <p className="text-white text-sm font-medium">Notifications</p>
+            {unread > 0 && (
+              <button onClick={markAllRead} className="text-brand-gold text-xs hover:underline">
+                Mark all read
+              </button>
+            )}
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {notifications.length === 0 ? (
+              <p className="text-brand-muted text-xs text-center py-8">No notifications yet</p>
+            ) : (
+              notifications.map(n => (
+                <button key={n.id}
+                  onClick={() => { markRead(n.id); setOpen(false) }}
+                  className={`w-full text-left px-4 py-3 border-b border-brand-border last:border-0 hover:bg-white/5 transition-colors flex items-start gap-2.5 ${!n.read ? 'bg-brand-gold/5' : ''}`}
+                >
+                  <span className="text-sm mt-0.5 flex-shrink-0">{TYPE_ICONS[n.type] || '🔔'}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs leading-snug ${!n.read ? 'text-white font-medium' : 'text-brand-muted'}`}>{n.message}</p>
+                    <p className="text-brand-muted text-[10px] mt-0.5">
+                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                    </p>
+                  </div>
+                  {!n.read && <div className="w-1.5 h-1.5 rounded-full bg-brand-gold mt-1.5 flex-shrink-0" />}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function ChangePasswordModal({ onClose }) {
   const [newPw, setNewPw] = useState('')
@@ -126,11 +236,14 @@ function SidebarContent({ onClose }) {
           </div>
           <p className="text-brand-muted text-xs mt-0.5 tracking-wider">OPS PORTAL</p>
         </div>
-        {onClose && (
-          <button onClick={onClose} className="text-brand-muted hover:text-white lg:hidden">
-            <X size={18} />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          <NotificationBell userId={profile?.id} />
+          {onClose && (
+            <button onClick={onClose} className="text-brand-muted hover:text-white lg:hidden">
+              <X size={18} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Nav */}
