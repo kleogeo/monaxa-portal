@@ -103,6 +103,16 @@ function TimeProgress({ estimatedHours, startedAt }) {
 
 // ─── Task Modal ───────────────────────────────────────────────────
 function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
+  const isAdmin = currentProfile?.role === 'admin'
+  const canDelete = isAdmin || task.assigned_to === currentProfile?.id || task.created_by === currentProfile?.id
+
+  async function handleDelete() {
+    if (!confirm('Delete this task? This cannot be undone.')) return
+    await supabase.from('tasks').delete().eq('id', task.id)
+    onUpdate()
+    onClose()
+  }
+
   const [status, setStatus] = useState(task.status)
   const [findings, setFindings] = useState(task.findings || '')
   const [source, setSource] = useState(task.source || '')
@@ -434,6 +444,9 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
                   className="flex items-center gap-2 border border-brand-gold/30 text-brand-gold hover:bg-brand-gold/10 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors">
                   <User size={13} /> Self-Assign
                 </button>
+              )}
+              {canDelete && (
+                <button onClick={handleDelete} className="border border-red-400/30 text-red-400 hover:bg-red-400/10 rounded-lg px-4 py-2.5 text-sm transition-colors">Delete</button>
               )}
               <button onClick={onClose} className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Cancel</button>
               <button onClick={handleSave} disabled={saving}
