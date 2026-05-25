@@ -28,20 +28,26 @@ const CASE_TYPE_LABELS = {
 
 
 function CaseDetailModal({ c, profiles, onClose, onUpdate }) {
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
   const [form, setForm] = useState({ ...c })
   const [saving, setSaving] = useState(false)
 
   async function save() {
     setSaving(true)
-    await supabase.from('cases').update({
-      case_ref: form.case_ref,
-      account_id: form.account_id,
-      case_type: form.case_type,
-      priority: form.priority,
-      status: form.status,
-      assigned_to: form.assigned_to,
-      notes: form.notes,
-    }).eq('id', c.id)
+    if (isAdmin) {
+      await supabase.from('cases').update({
+        case_ref: form.case_ref,
+        account_id: form.account_id,
+        case_type: form.case_type,
+        priority: form.priority,
+        status: form.status,
+        assigned_to: form.assigned_to,
+        notes: form.notes,
+      }).eq('id', c.id)
+    } else {
+      await supabase.from('cases').update({ status: form.status }).eq('id', c.id)
+    }
     setSaving(false)
     onUpdate()
     onClose()
@@ -63,66 +69,111 @@ function CaseDetailModal({ c, profiles, onClose, onUpdate }) {
             <p className="text-brand-muted text-xs mt-0.5">{format(new Date(c.created_at), 'MMM d, yyyy')}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={deleteCase} className="text-brand-muted hover:text-red-400 text-xs transition-colors">Delete</button>
+            {isAdmin && <button onClick={deleteCase} className="text-brand-muted hover:text-red-400 text-xs transition-colors">Delete</button>}
             <button onClick={onClose} className="text-brand-muted hover:text-white"><X size={18} /></button>
           </div>
         </div>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-brand-muted text-xs mb-1 block">Case Ref</label>
-              <input value={form.case_ref} onChange={e => setForm({...form, case_ref: e.target.value})}
-                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+          {isAdmin ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Case Ref</label>
+                  <input value={form.case_ref} onChange={e => setForm({...form, case_ref: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                </div>
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Account ID</label>
+                  <input value={form.account_id || ''} onChange={e => setForm({...form, account_id: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Type</label>
+                  <select value={form.case_type} onChange={e => setForm({...form, case_type: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    {Object.entries(CASE_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Priority</label>
+                  <select value={form.priority} onChange={e => setForm({...form, priority: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Status</label>
+                  <select value={form.status} onChange={e => setForm({...form, status: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="escalated">Escalated</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Assigned To</label>
+                  <select value={form.assigned_to || ''} onChange={e => setForm({...form, assigned_to: e.target.value})}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-brand-muted text-xs mb-1 block">Notes</label>
+                <textarea value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} rows={4}
+                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold resize-none" />
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Case Ref</p>
+                  <p className="text-white text-sm">{form.case_ref}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Account ID</p>
+                  <p className="text-white text-sm">{form.account_id || '—'}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Type</p>
+                  <p className="text-white text-sm">{CASE_TYPE_LABELS[form.case_type]}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Priority</p>
+                  <p className="text-white text-sm capitalize">{form.priority}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3 col-span-2">
+                  <p className="text-brand-muted text-xs mb-1">Assigned To</p>
+                  <p className="text-white text-sm">{profiles.find(p => p.id === form.assigned_to)?.full_name || '—'}</p>
+                </div>
+              </div>
+              <div>
+                <label className="text-brand-muted text-xs mb-1 block">Status</label>
+                <select value={form.status} onChange={e => setForm({...form, status: e.target.value})}
+                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="escalated">Escalated</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+              {form.notes && (
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Notes</p>
+                  <p className="text-white text-sm">{form.notes}</p>
+                </div>
+              )}
             </div>
-            <div>
-              <label className="text-brand-muted text-xs mb-1 block">Account ID</label>
-              <input value={form.account_id || ''} onChange={e => setForm({...form, account_id: e.target.value})}
-                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-brand-muted text-xs mb-1 block">Type</label>
-              <select value={form.case_type} onChange={e => setForm({...form, case_type: e.target.value})}
-                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
-                {Object.entries(CASE_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-brand-muted text-xs mb-1 block">Priority</label>
-              <select value={form.priority} onChange={e => setForm({...form, priority: e.target.value})}
-                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-brand-muted text-xs mb-1 block">Status</label>
-              <select value={form.status} onChange={e => setForm({...form, status: e.target.value})}
-                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
-                <option value="open">Open</option>
-                <option value="in_progress">In Progress</option>
-                <option value="escalated">Escalated</option>
-                <option value="closed">Closed</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-brand-muted text-xs mb-1 block">Assigned To</label>
-              <select value={form.assigned_to || ''} onChange={e => setForm({...form, assigned_to: e.target.value})}
-                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
-                {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className="text-brand-muted text-xs mb-1 block">Notes</label>
-            <textarea value={form.notes || ''} onChange={e => setForm({...form, notes: e.target.value})} rows={4}
-              className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold resize-none" />
-          </div>
+          )}
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Cancel</button>
             <button onClick={save} disabled={saving} className="flex-1 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold rounded-lg py-2.5 text-sm transition-colors disabled:opacity-50">

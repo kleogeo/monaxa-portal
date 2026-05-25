@@ -392,14 +392,16 @@ function TaskModal({ task, profiles, currentProfile, onClose, onUpdate }) {
                 className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
             </div>
 
-            <div>
-              <label className="text-xs text-brand-muted mb-1.5 block">Reassign To</label>
-              <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
-                className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
-                <option value="">Keep current</option>
-                {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === currentProfile?.id ? ' (me)' : ''}</option>)}
-              </select>
-            </div>
+            {currentProfile?.role === 'admin' && (
+              <div>
+                <label className="text-xs text-brand-muted mb-1.5 block">Reassign To</label>
+                <select value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                  <option value="">Keep current</option>
+                  {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}{p.id === currentProfile?.id ? ' (me)' : ''}</option>)}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="text-xs text-brand-muted mb-1.5 block">Status</label>

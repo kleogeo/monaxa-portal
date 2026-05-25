@@ -9,7 +9,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Plus, X, ChevronDown, GripVertical } from 'lucide-react'
+import { Plus, X, ChevronDown, GripVertical, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 
 const STATUS_COLORS = {
@@ -67,6 +67,161 @@ function SortableTaskCard({ task, updateStatus, onClick }) {
           <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[task.status]}`}>{task.status.replace('_', ' ')}</span>
           <span className="text-brand-muted text-xs capitalize">{task.type}</span>
           {task.due_date && <span className="text-brand-muted text-xs">{format(new Date(task.due_date), 'MMM d')}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TaskDetailModal({ task, profiles, currentProfile, onClose, onUpdate }) {
+  const [status, setStatus] = useState(task.status)
+  const [editTitle, setEditTitle] = useState(task.title)
+  const [editDesc, setEditDesc] = useState(task.description || '')
+  const [editPriority, setEditPriority] = useState(task.priority)
+  const [editAssignee, setEditAssignee] = useState(task.assigned_to || '')
+  const [editDueDate, setEditDueDate] = useState(task.due_date || '')
+  const [saving, setSaving] = useState(false)
+
+  const isAdmin = currentProfile?.role === 'admin'
+  const canDelete = isAdmin || task.assigned_to === currentProfile?.id || task.created_by === currentProfile?.id
+  const assignee = profiles.find(p => p.id === task.assigned_to)
+
+  async function deleteTask() {
+    if (!confirm('Delete this task? This cannot be undone.')) return
+    await supabase.from('tasks').delete().eq('id', task.id)
+    onUpdate()
+    onClose()
+  }
+
+  async function saveTask() {
+    setSaving(true)
+    const updates = { status }
+    if (status === 'done' && task.status !== 'done') updates.completed_at = new Date().toISOString()
+    if (isAdmin) {
+      updates.title = editTitle.trim() || task.title
+      updates.description = editDesc || null
+      updates.priority = editPriority
+      updates.assigned_to = editAssignee || null
+      updates.due_date = editDueDate || null
+    }
+    await supabase.from('tasks').update(updates).eq('id', task.id)
+    setSaving(false)
+    onUpdate()
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-5">
+          <div className="flex-1 pr-3">
+            {isAdmin ? (
+              <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                className="font-semibold text-white text-base w-full bg-transparent border-b border-brand-border focus:border-brand-gold focus:outline-none pb-0.5" />
+            ) : (
+              <div>
+                <h3 className="font-semibold text-white">{task.title}</h3>
+                <p className="text-brand-muted text-xs mt-0.5 capitalize">{task.type} · {task.priority} priority</p>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {canDelete && (
+              <button onClick={deleteTask} className="text-brand-muted hover:text-red-400 transition-colors" title="Delete task">
+                <Trash2 size={15} />
+              </button>
+            )}
+            <button onClick={onClose} className="text-brand-muted hover:text-white"><X size={18} /></button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {isAdmin ? (
+            <div className="space-y-3">
+              <div>
+                <label className="text-brand-muted text-xs mb-1 block">Description</label>
+                <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={2}
+                  className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold resize-none"
+                  placeholder="Task description..." />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Priority</label>
+                  <select value={editPriority} onChange={e => setEditPriority(e.target.value)}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-brand-muted text-xs mb-1 block">Due Date</label>
+                  <input type="date" value={editDueDate} onChange={e => setEditDueDate(e.target.value)}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold" />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-brand-muted text-xs mb-1 block">Assignee</label>
+                  <select value={editAssignee} onChange={e => setEditAssignee(e.target.value)}
+                    className="w-full bg-brand-dark border border-brand-border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-brand-gold">
+                    <option value="">Unassigned</option>
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {task.description && (
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Description</p>
+                  <p className="text-white text-sm">{task.description}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Due Date</p>
+                  <p className="text-white">{task.due_date ? format(new Date(task.due_date), 'MMM d, yyyy') : '—'}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Assigned To</p>
+                  <p className="text-white">{assignee?.full_name || '—'}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Est. Hours</p>
+                  <p className="text-white">{task.estimated_hours ? `${task.estimated_hours}h` : '—'}</p>
+                </div>
+                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+                  <p className="text-brand-muted text-xs mb-1">Type</p>
+                  <p className="text-white capitalize">{task.type}</p>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
+            <p className="text-brand-muted text-xs mb-1">Status</p>
+            <select value={status} onChange={e => setStatus(e.target.value)}
+              className="w-full bg-transparent text-white text-sm focus:outline-none">
+              <option value="open">Open</option>
+              <option value="in_progress">In Progress</option>
+              <option value="review">Review</option>
+              <option value="done">Done</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose}
+              className="flex-1 border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
+            <button onClick={saveTask} disabled={saving}
+              className="flex-1 bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold rounded-lg py-2.5 text-sm transition-colors disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -248,54 +403,14 @@ export default function Tasks() {
         }
       </div>
 
-      {/* Create Modal */}
-      {/* Task Detail Modal */}
       {selectedTask && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && setSelectedTask(null)}>
-          <div className="bg-brand-surface border border-brand-border rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3 className="font-semibold text-white">{selectedTask.title}</h3>
-                <p className="text-brand-muted text-xs mt-0.5 capitalize">{selectedTask.type} · {selectedTask.priority} priority</p>
-              </div>
-              <button onClick={() => setSelectedTask(null)} className="text-brand-muted hover:text-white"><X size={18} /></button>
-            </div>
-            <div className="space-y-4">
-              {selectedTask.description && (
-                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
-                  <p className="text-brand-muted text-xs mb-1">Description</p>
-                  <p className="text-white text-sm">{selectedTask.description}</p>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
-                  <p className="text-brand-muted text-xs mb-1">Status</p>
-                  <select value={selectedTask.status} onChange={async e => { await updateStatus(selectedTask.id, e.target.value); setSelectedTask({...selectedTask, status: e.target.value}) }}
-                    className="w-full bg-transparent text-white text-sm focus:outline-none">
-                    <option value="open">Open</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="review">Review</option>
-                    <option value="done">Done</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
-                  <p className="text-brand-muted text-xs mb-1">Due Date</p>
-                  <p className="text-white">{selectedTask.due_date ? format(new Date(selectedTask.due_date), 'MMM d, yyyy') : '—'}</p>
-                </div>
-                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
-                  <p className="text-brand-muted text-xs mb-1">Assigned To</p>
-                  <p className="text-white">{selectedTask.assigned?.full_name || '—'}</p>
-                </div>
-                <div className="bg-brand-dark border border-brand-border rounded-lg p-3">
-                  <p className="text-brand-muted text-xs mb-1">Est. Hours</p>
-                  <p className="text-white">{selectedTask.estimated_hours ? `${selectedTask.estimated_hours}h` : '—'}</p>
-                </div>
-              </div>
-              <button onClick={() => setSelectedTask(null)} className="w-full border border-brand-border text-brand-muted hover:text-white rounded-lg py-2.5 text-sm transition-colors">Close</button>
-            </div>
-          </div>
-        </div>
+        <TaskDetailModal
+          task={selectedTask}
+          profiles={profiles}
+          currentProfile={profile}
+          onClose={() => setSelectedTask(null)}
+          onUpdate={fetchData}
+        />
       )}
 
       {showModal && (
